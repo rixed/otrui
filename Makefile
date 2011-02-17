@@ -1,17 +1,23 @@
 OCAMLPATH = ..
 
-PROGRAMS = test.byte
-all: $(PROGRAMS)
-opt: $(PROGRAMS:.byte=.opt)
+all: otrui.cma otrui.cmxa otrui
 
-REQUIRES = bricabrac pfds curses
+ML_SOURCES = test.ml
+
+REQUIRES = unix bricabrac pfds curses
 
 include make.common
 
-.cmo.byte:
-	$(OCAMLC)   -o $@ -package "$(REQUIRES)" -linkpkg $(OCAMLFLAGS) $^
+otrui.cma: $(ML_OBJS)
+	$(OCAMLC)   -a -o $@ -package "$(REQUIRES)" -custom -linkpkg $(OCAMLFLAGS) $(ML_OBJS)
 
-.cmx.opt:
-	$(OCAMLOPT) -o $@ -package "$(REQUIRES)" -linkpkg $(OCAMLOPTFLAGS) $^
+otrui.cmxa: $(ML_XOBJS)
+	$(OCAMLOPT) -a -o $@ -package "$(REQUIRES)" $(OCAMLOPTFLAGS) $(ML_XOBJS)
+	
+otrui: otrui.cma
+	$(OCAMLMKTOP)  -o $@ -package "$(REQUIRES)" -custom $^
+
+clean-spec:
+	@rm -f otrui
 
 -include .depend

@@ -13,3 +13,4 @@ gmon.out
 *.byte
 *.opt
 _build
+otrui

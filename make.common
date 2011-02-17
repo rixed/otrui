@@ -1,6 +1,7 @@
 OCAMLC     = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlc -thread -rectypes
 OCAMLOPT   = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlopt -thread -rectypes
 OCAMLDEP   = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamldep
+OCAMLMKTOP = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlmktop
 INCS       =
 OCAMLOPTFLAGS = $(INCS) -w Ae -g
 OCAMLFLAGS    = $(INCS) -w Ae -g
@@ -8,6 +9,9 @@ OCAMLFLAGS    = $(INCS) -w Ae -g
 CAMLINCLUDE = $(shell ocamlfind printconf stdlib)
 CPPFLAGS += -I $(CAMLINCLUDE) -I .
 CFLAGS += -std=c99 -W -Wall
+
+ML_OBJS  = $(ML_SOURCES:.ml=.cmo)
+ML_XOBJS = $(ML_SOURCES:.ml=.cmx)
 
 # Common rules
 .SUFFIXES: .ml .mli .cmo .cmi .cmx
@@ -23,8 +27,11 @@ CFLAGS += -std=c99 -W -Wall
 .ml.cmx:
 	$(OCAMLOPT) -package "$(REQUIRES)" $(OCAMLOPTFLAGS) -c $<
 
-ML_OBJS  = $(ML_SOURCES:.ml=.cmo)
-ML_XOBJS = $(ML_SOURCES:.ml=.cmx)
+.cmo.byte:
+	$(OCAMLC)   -o $@ -package "$(REQUIRES)" -linkpkg $(OCAMLFLAGS) $^
+
+.cmx.opt:
+	$(OCAMLOPT) -o $@ -package "$(REQUIRES)" -linkpkg $(OCAMLOPTFLAGS) $^
 
 # Clean up
 .PHONY: clean clean-spec

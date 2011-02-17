@@ -3,16 +3,28 @@ open Bricabrac
 open Curses
 module Rope = Rope_impl.Make
 
+module Log =
+struct
+	let ch = open_out "otrui.log"
+	let p fmt = Printf.fprintf ch fmt
+end
+
 let errs = ref []
 let chk ok =
 	if not ok then (
-		errs := (Printf.sprintf "Error...") :: !errs ;
+		Log.p "ncurses error!\n" ;
+		(*errs := (Printf.sprintf "Error...") :: !errs ;*)
 		failwith "Error"
 	)
 
 let print x y c = if not (mvaddch y x (int_of_char c)) then errs := (Printf.sprintf "Cannot print at %d %d" x y)::!errs
 
 let set_palette p f b = chk (init_pair p f b)
+
+let char_of_key k =
+	(* errs := (Printf.sprintf "key %d" k) :: !errs ;*)
+	if k = Key.eol || k = 13 then '\n'
+	else char_of_int k
 
 let init () =
 	ignore (initscr ()) ;
@@ -23,10 +35,13 @@ let init () =
 	set_palette 3 Color.blue Color.black ;
 	chk (cbreak ()) ;
 	chk (noecho ()) ;
+	nonl () ;
+	chk (keypad (stdscr ()) true) ;
 	chk (curs_set 0)
 
 let exit () =
-	endwin ()
+	endwin () ;
+	List.iter (fun s -> Printf.printf "%s\n" s) !errs
 
 type split_dir = Horizontal | Vertical 
 type split_size = Absolute of int (* min abs size *) | Relative of float
@@ -36,18 +51,21 @@ object
 	method virtual display : int -> int -> int -> int -> unit
 	(* Et une autre pour interpreter une commande... c'est à dire qu'on peut appeler directement
 	 * une autre méthode pour modifier l'état interne de buffer... *)
+	method virtual key : int -> unit
 end
 
 class unbound_buf =
 object
 	inherit buf
 	method display _x0 _y0 _width _height = ()
+	method key _k = ()
 end
 
 class text_buf text =
 object
 	inherit buf
-	val text = text
+	val mutable text = text
+	method set_text t = text <- t 	(* TODO: save previous versions for undo *)
 	val mutable color = 0	(* By default, use default terminal color pair (white on black usually) *)
 	val mutable wrap_symbol_color = 0
 	val mutable wrap_lines = false
@@ -93,6 +111,29 @@ object
 		let put_chr = if wrap_lines then put_chr_wrap else put_chr_nowrap in
 		try ignore (Rope.fold_left put_chr (0, 0) text)
 		with Exit -> ()
+
+	method key _k = ()
+end
+
+class pipe_buf ch_in ch_out =
+	let text = Rope.empty in
+object (self)
+	inherit text_buf text
+	val ch_in = ch_in
+	val ch_out = ch_out
+	val mutable last_len = 0
+	method key k =
+		let c = char_of_key k in
+		self#set_text (Rope.cat text (Rope.singleton c)) ;
+		if c = '\n' then (
+			let len = Rope.length text in
+			let last_cmd = Rope.sub text last_len len in
+			last_len <- len ;
+			output_string ch_out (Rope.to_string last_cmd) ;
+			flush ch_out ;
+			let resp = input_line ch_in in
+			self#set_text (Rope.cat text (Rope.of_string resp))
+		)
 end
 
 type win =
@@ -108,13 +149,13 @@ let win_sub_sizes children =
 
 let default_split_dir = Horizontal
 
-let split ?(split_dir) buf size = function
-	| Leaf _ as prev ->
-		Split (optdef split_dir default_split_dir, [ size, Leaf buf ; Relative 1., prev ])
-	| Split (prev_split_dir, children) ->
-		may split_dir (fun dir ->
-			if prev_split_dir <> dir then failwith "Cannot resplit in another direction") ;
-		Split (prev_split_dir, (size, Leaf buf) :: children)
+let split ?(split_dir=default_split_dir) buf size win =
+	Split (split_dir, [ size, Leaf buf ; Relative 1., win ])
+
+let resplit buf size = function
+	| Leaf _ -> failwith "Cannot resplit leaf window"
+	| Split (split_dir, children) ->
+		Split (split_dir, (size, Leaf buf) :: children)
 
 let size_of rem_abs = function
 	| Absolute a -> min a rem_abs
@@ -142,26 +183,58 @@ let rec display x0 y0 width height = function
 let display_root root =
 	let win = stdscr () in
 	let height, width = getmaxyx win in
+	display 0 0 width height root
+
+let test (ch_out, ch_in) =
 	(* FIXME: add_msg "fmt" x y *)
+	let height, width = getmaxyx (stdscr ()) in
 	errs := (Printf.sprintf "Total resolution = %d x %d" width height) :: !errs ;
 	errs := (Printf.sprintf "Max colors = %d" (colors ())) :: !errs ;
 	errs := (Printf.sprintf "Max color pairs = %d" (color_pairs ())) :: !errs ;
-	display 0 0 width height root
 
-let test () =
 	let content = Rope.of_file "test.ml" in
 	let b1 = new text_buf content
 	and b2 = new text_buf content in
 	b1#set_wrap ~symbol_color:1 true ;
 	b2#set_wrap ~symbol_color:1 false ;
-	let root = split ~split_dir:Vertical (b2:>buf) (Relative 0.5) (Leaf (b1:>buf)) in
-	display_root root ;
-	chk (refresh ()) ;
-	(* Then wait a key *)
-	ignore (getch ())
+	let top = split ~split_dir:Vertical (b2:>buf) (Relative 0.5) (Leaf (b1:>buf)) in
+	let repl = new pipe_buf ch_in ch_out in
+	let root = split (repl:>buf) (Absolute 10) top in
+	(* read keys in loop *)
+	let focused = repl in
+	let rec next_key () =
+		display_root root ;
+		chk (refresh ()) ;
+		let k = getch () in
+		if k = 27 (* ESC *) then (
+			exit ();
+		) else (
+			focused#key k ;
+			next_key ()
+		) in
+	next_key ()
 
-let main =
+let redirect_out_to_file fd =
+	Unix.dup2 fd Unix.stdout ;
+	Unix.dup2 fd Unix.stderr ;
+	Unix.close fd
+
+let redirect_in_from_file fd =
+	Unix.dup2 fd Unix.stdin ;
+	Unix.close fd
+
+(* Returns two channels, one where to write commands, the other to read results *)
+let seize_toplevel () =
+	let out_read, out_write = Unix.pipe () in
+	redirect_out_to_file out_write ;
+	let in_read, in_write = Unix.pipe () in
+	redirect_in_from_file in_read ;
+	Unix.out_channel_of_descr in_write, Unix.in_channel_of_descr out_read
+
+let main () =
+	let repl_in, repl_out = seize_toplevel () in
+	(* Do not write into repl_in until the toplevel is actually reading, or we will deadblock.
+	 * The solution here is to start a new thread *)
 	init () ;
-	ignore_exceptions test () ;
-	exit () ;
-	List.iter (fun s -> Printf.printf "%s\n" s) !errs
+	(*ignore (Thread.create test (stdout, stdin)) (*repl_in, repl_out))*)*)
+	test (repl_in, repl_out)
