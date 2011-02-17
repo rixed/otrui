@@ -6,42 +6,50 @@ module Rope = Rope_impl.Make
 module Log =
 struct
 	let ch = open_out "otrui.log"
-	let p fmt = Printf.fprintf ch fmt
+	let p fmt = Printf.fprintf ch (fmt^^"\n%!")
 end
 
-let errs = ref []
 let chk ok =
 	if not ok then (
-		Log.p "ncurses error!\n" ;
-		(*errs := (Printf.sprintf "Error...") :: !errs ;*)
+		Log.p "ncurses error!" ;
 		failwith "Error"
 	)
 
-let print x y c = if not (mvaddch y x (int_of_char c)) then errs := (Printf.sprintf "Cannot print at %d %d" x y)::!errs
+let print x y c = if not (mvaddch y x (int_of_char c)) then Log.p "Cannot print at %d %d" x y
 
 let set_palette p f b = chk (init_pair p f b)
 
 let char_of_key k =
-	(* errs := (Printf.sprintf "key %d" k) :: !errs ;*)
+	Log.p "Got key %d" k ;
 	if k = Key.eol || k = 13 then '\n'
+	(* TODO: handle DEL, backspace... *)
+	else if k > 255 then '?'
 	else char_of_int k
 
 let init () =
+	Log.p "Initializing ncurses..." ;
 	ignore (initscr ()) ;
 	assert (has_colors ()) ; (* FIXME *)
+	Log.p "  Starting colors..." ;
 	chk (start_color ()) ;
+	Log.p "  Initializing some color pairs..." ;
 	for c = 1 to (colors () - 1) do set_palette c c Color.black done ;
 	set_palette 2 Color.green Color.black ;
 	set_palette 3 Color.blue Color.black ;
+	Log.p "  cbreak..." ;
 	chk (cbreak ()) ;
+	Log.p "  noecho..." ;
 	chk (noecho ()) ;
+	Log.p "  nonl..." ;
 	nonl () ;
+	Log.p "  keypad..." ;
 	chk (keypad (stdscr ()) true) ;
+	Log.p "  hide cursor..." ;
 	chk (curs_set 0)
 
 let exit () =
-	endwin () ;
-	List.iter (fun s -> Printf.printf "%s\n" s) !errs
+	Log.p "Exiting ncurses" ;
+	endwin ()
 
 type split_dir = Horizontal | Vertical 
 type split_size = Absolute of int (* min abs size *) | Relative of float
@@ -136,6 +144,24 @@ object (self)
 		)
 end
 
+class cmd_buf submit_cmd =
+	let text = Rope.empty in
+object (self)
+	inherit text_buf text
+	val mutable last_len = 0
+	method key k =
+		let c = char_of_key k in
+		self#set_text (Rope.cat text (Rope.singleton c)) ;
+		if c = '\n' then (
+			let len = Rope.length text in
+			let last_cmd = Rope.sub text last_len len in
+			let result = submit_cmd last_cmd in
+			self#set_text (Rope.cat text result) ;
+			last_len <- Rope.length text ;
+		)
+end
+
+
 type win =
 	| Leaf of buf
 	| Split of (split_dir * (split_size * win) list)
@@ -185,20 +211,37 @@ let display_root root =
 	let height, width = getmaxyx win in
 	display 0 0 width height root
 
-let test (ch_out, ch_in) =
-	(* FIXME: add_msg "fmt" x y *)
-	let height, width = getmaxyx (stdscr ()) in
-	errs := (Printf.sprintf "Total resolution = %d x %d" width height) :: !errs ;
-	errs := (Printf.sprintf "Max colors = %d" (colors ())) :: !errs ;
-	errs := (Printf.sprintf "Max color pairs = %d" (color_pairs ())) :: !errs ;
+let _ =
+	Toploop.initialize_toplevel_env()
 
+let rope_formatter rope_ref =
+	let out str pos len =
+		let s = String.sub str pos len in
+		let r = Rope.of_string s in
+		rope_ref := Rope.cat !rope_ref r in
+	Format.make_formatter out nop
+
+let submit_toplevel q =
+	let query = Rope.to_string q in
+	let lb = Lexing.from_string query in
+	let phr = !Toploop.parse_toplevel_phrase lb in
+	let rope_ref = ref Rope.empty in
+	let ok = Toploop.execute_phrase true (rope_formatter rope_ref) phr in
+	Log.p "Toplevel: %s -> %s (%b)" query (Rope.to_string !rope_ref) ok ;
+	!rope_ref
+
+let test () =
+	let height, width = getmaxyx (stdscr ()) in
+	Log.p "Total resolution = %d x %d" width height ;
+	Log.p "Max colors = %d" (colors ()) ;
+	Log.p "Max color pairs = %d" (color_pairs ()) ;
 	let content = Rope.of_file "test.ml" in
 	let b1 = new text_buf content
 	and b2 = new text_buf content in
 	b1#set_wrap ~symbol_color:1 true ;
 	b2#set_wrap ~symbol_color:1 false ;
 	let top = split ~split_dir:Vertical (b2:>buf) (Relative 0.5) (Leaf (b1:>buf)) in
-	let repl = new pipe_buf ch_in ch_out in
+	let repl = new cmd_buf submit_toplevel in
 	let root = split (repl:>buf) (Absolute 10) top in
 	(* read keys in loop *)
 	let focused = repl in
@@ -214,27 +257,8 @@ let test (ch_out, ch_in) =
 		) in
 	next_key ()
 
-let redirect_out_to_file fd =
-	Unix.dup2 fd Unix.stdout ;
-	Unix.dup2 fd Unix.stderr ;
-	Unix.close fd
-
-let redirect_in_from_file fd =
-	Unix.dup2 fd Unix.stdin ;
-	Unix.close fd
-
-(* Returns two channels, one where to write commands, the other to read results *)
-let seize_toplevel () =
-	let out_read, out_write = Unix.pipe () in
-	redirect_out_to_file out_write ;
-	let in_read, in_write = Unix.pipe () in
-	redirect_in_from_file in_read ;
-	Unix.out_channel_of_descr in_write, Unix.in_channel_of_descr out_read
-
-let main () =
-	let repl_in, repl_out = seize_toplevel () in
+let main =
+	init () ;
 	(* Do not write into repl_in until the toplevel is actually reading, or we will deadblock.
 	 * The solution here is to start a new thread *)
-	init () ;
-	(*ignore (Thread.create test (stdout, stdin)) (*repl_in, repl_out))*)*)
-	test (repl_in, repl_out)
+	try_finalize test () exit ()

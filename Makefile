@@ -1,6 +1,7 @@
 OCAMLPATH = ..
 
-all: otrui.cma otrui.cmxa otrui
+all: test.byte
+# otrui.cma otrui.cmxa otrui 
 
 ML_SOURCES = test.ml
 

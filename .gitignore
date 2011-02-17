@@ -14,3 +14,4 @@ gmon.out
 *.opt
 _build
 otrui
+otrui.log
