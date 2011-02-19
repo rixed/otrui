@@ -1,7 +1,7 @@
 OCAMLC     = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlc -thread -rectypes
 OCAMLOPT   = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlopt -thread -rectypes
 OCAMLDEP   = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamldep
-OCAMLMKTOP = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlmktop
+OCAMLMKTOP = OCAMLPATH=$(OCAMLPATH) ocamlfind ocamlmktop -thread -rectypes
 INCS       =
 OCAMLOPTFLAGS = $(INCS) -w Ae -g
 OCAMLFLAGS    = $(INCS) -w Ae -g

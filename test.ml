@@ -215,56 +215,47 @@ let ends_with e r =
 		e' = e
 	) else false
 
-let repl_len = ref 0
-(* toploop can write into repl independantly *)
-let read_for_toploop prompt buffer buffer_len =
-	let fill_buffer () =
-		(* Copy into buffer as much as we can *)
-		let len = Rope.length repl#get in
-		let nb_items = min (len - !repl_len) buffer_len in
-		let cmd = Rope.sub repl#get !repl_len (!repl_len + nb_items) in
-		Log.p "Got a new command: '%s'" (Rope.to_string cmd) ;
-		Rope.iteri (String.set buffer) cmd ;
-		repl_len := !repl_len + nb_items ;
-		nb_items, false in
-	(* If we have a prompt, then we save the length after the prompt *)
-	if prompt = "" && Rope.length repl#get > !repl_len then (
-		Log.p "There was some content left in repl for the toplevel" ;
-		fill_buffer ()
-	) else (
-		Log.p "Loop for getch until something is ready for the toplevel" ;
-		repl#append (Rope.of_string prompt) ;
-		repl_len := Rope.length repl#get ;
-		(* read keys in loop, monitoring repl buffer for new content to send to toploop *)
-		let rec next_key () =
-			display_root () ;
-			chk (refresh ()) ;
-			let k = getch () in
-			if k = 27 (* ESC *) then (
-				quit () ;
-				exit 0
-			) else (
-				focused#key k ;
-				if k = 13 && Rope.length repl#get > !repl_len && ends_with ";;\n" repl#get then
-					fill_buffer ()
-				else next_key ()
-			) in
-		next_key ()
-	)
+let rope_formatter buf =
+	let out str pos len =
+		let s = String.sub str pos len in
+		let r = Rope.of_string s in
+		Log.p "Toplevel formatting output '%s'" s ;
+		buf#append r in
+	Format.make_formatter out nop
 
-let start_loop =
+let top_eval cmd =
+	let l = Lexing.from_string cmd in
+	let ph = !Toploop.parse_toplevel_phrase l in
+	let fmt = rope_formatter repl in
+	Log.p "Executing '%s'" cmd ;
+	try Toploop.execute_phrase true fmt ph
+	with exn ->
+		Toploop.print_exception_outcome fmt exn ;
+		false
+
+let rec key_loop () =
+	Log.p "Loop for getch" ;
+	let repl_len = Rope.length repl#get in
+	(* read keys in loop, monitoring repl buffer for new content to send to toploop *)
+	let rec next_key () =
+		display_root () ;
+		chk (refresh ()) ;
+		let k = getch () in
+		if k = 27 (* ESC *) then (
+			quit () ;
+			exit 0
+		) else (
+			focused#key k ;
+			let cur_len = Rope.length repl#get in
+			if k = 13 && cur_len > repl_len && ends_with ";;\n" repl#get then (
+				let cmd = Rope.to_string (Rope.sub repl#get repl_len cur_len) in
+				ignore (top_eval cmd) ;
+				key_loop ()
+			) else next_key ()
+		) in
+	next_key ()
+
+let start =
 	init_ncurses () ;
-	(* Input for toplevel must be talen from our special toplevel buf *)
-	Toploop.read_interactive_input := read_for_toploop ;
-	(* And output from toplevel should be redirected into this buf *)
-	let rope_formatter buf =
-		let out str pos len =
-			let s = String.sub str pos len in
-			let r = Rope.of_string s in
-			Log.p "Toplevel formatting output '%s'" s ;
-			buf#append r in
-		Format.make_formatter out nop in
-	let toploop_formatter = rope_formatter repl in
-	(* Load otrui *)
-	Toploop.loop toploop_formatter
+	key_loop ()
 

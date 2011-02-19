@@ -1,7 +1,8 @@
 OCAMLPATH = ..
 
-all: test.byte
-# otrui.cma otrui.cmxa otrui 
+all: test.byte otrui
+#top.byte otrui.cma
+# test.byte otrui.cma otrui.cmxa otrui 
 
 ML_SOURCES = test.ml
 
@@ -16,7 +17,7 @@ otrui.cmxa: $(ML_XOBJS)
 	$(OCAMLOPT) -a -o $@ -package "$(REQUIRES)" $(OCAMLOPTFLAGS) $(ML_XOBJS)
 	
 otrui: otrui.cma
-	$(OCAMLMKTOP)  -o $@ -package "$(REQUIRES)" -custom $^
+	$(OCAMLMKTOP)  -o $@ -package "$(REQUIRES)" -g -custom $^
 
 clean-spec:
 	@rm -f otrui
