@@ -255,7 +255,8 @@ let rec key_loop () =
 		) in
 	next_key ()
 
-let start =
+(* works only if a function... :-/ *)
+let start () =
 	init_ncurses () ;
 	key_loop ()
 
