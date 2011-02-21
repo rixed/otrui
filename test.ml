@@ -19,7 +19,6 @@ let print x y c = if not (mvaddch y x (int_of_char c)) then Log.p "Cannot print 
 let set_palette p f b = chk (init_pair p f b)
 
 let char_of_key k =
-	Log.p "Got key %d" k ;
 	if k = Key.eol || k = 13 then '\n'
 	(* TODO: handle DEL, backspace... *)
 	else if k > 255 then '?'
@@ -55,17 +54,89 @@ let quit () =
 class virtual buffer =
 object
 	method virtual get : char Rope.t
-	method virtual set : char Rope.t -> unit
 end
+
+type text_buffer_mark = { mutable mark_pos: int }
 
 class text_buffer init_content =
 object
 	inherit buffer
 	val mutable content = init_content
 	method get = content
-	method set c = content <- c
-	method append c = content <- Rope.cat content c
+
+	val mutable marks = []
+	(* Return a new mark at this position *)
+	method mark pos =
+		let mark = { mark_pos = pos } in
+		marks <- mark :: marks ;
+		mark
+	
+	method unmark mark = marks <- List.filter ((!=) mark) marks
+		
+	method insert pos c =
+		let l = Rope.sub content 0 pos
+		and r = Rope.sub content pos (Rope.length content) in
+		content <- Rope.cat (Rope.cat l c) r ;
+		let c_len = Rope.length c in
+		let offset_mark_pos mark =
+			if mark.mark_pos >= pos then mark.mark_pos <- mark.mark_pos + c_len in
+		List.iter offset_mark_pos marks
+	
+	method delete pos n =
+		let len = Rope.length content in
+		let l = Rope.sub content 0 pos
+		and r = if pos+n <= len-1 then Rope.sub content (pos+n) len else Rope.empty in
+		Log.p "Deleting from '%s' gives '%s'+'%s'" (Rope.to_string content) (Rope.to_string l) (Rope.to_string r) ;
+		content <- Rope.cat l r ;
+		let update_mark_pos mark =
+			if mark.mark_pos >= pos+n then mark.mark_pos <- mark.mark_pos - n
+			else if mark.mark_pos >= pos then mark.mark_pos <- pos in
+		List.iter update_mark_pos marks
 end
+
+(* There's only one repl buffer *)
+let repl =
+	let prompt = Rope.of_string "# " in
+object
+	inherit text_buffer prompt as parent
+
+	val mutable resp_end = { mark_pos = 0 }	(* not really *)
+	initializer
+		resp_end <- parent#mark (Rope.length prompt -1)
+
+	method insert pos c =
+		let top_eval cmd =
+			let cmd = Rope.to_string cmd in
+			Log.p "Executing '%s'" cmd ;
+			let buffer = Buffer.create 100 in
+			let fmt = Format.formatter_of_buffer buffer in
+			let l = Lexing.from_string cmd in
+			let ph = !Toploop.parse_toplevel_phrase l in
+			let status = try
+				Toploop.execute_phrase true fmt ph
+			with exn ->
+				Toploop.print_exception_outcome fmt exn ;
+				false in
+			status, Rope.of_string (Buffer.contents buffer) in
+		let ends_with e r =
+			let lr = Rope.length r in
+			let le = String.length e in
+			if lr >= le then (
+				let e' = Rope.to_string (Rope.sub r (lr-le) lr) in
+				e' = e
+			) else false in
+		let appending = pos = Rope.length content in
+		parent#insert pos c ;
+		if appending && ends_with ";;\n" content then (
+			let cur_len = Rope.length content in
+			let cmd = Rope.sub content (resp_end.mark_pos+1) cur_len in
+			let _status, resp = top_eval cmd in
+			parent#insert cur_len resp ;
+			parent#insert (Rope.length content) prompt ;
+			resp_end.mark_pos <- (Rope.length content) -1
+		)
+end
+
 
 (* A view is a window that can be opened/closed/moved/resized
  * and which purpose is to display a buffer *)
@@ -73,18 +144,26 @@ end
 type split_dir = Horizontal | Vertical 
 type split_size = Absolute of int (* min abs size *) | Relative of float
 
-class virtual view =
-object
+let views = Hashtbl.create 20
+let view_list () = Hashtbl.fold (fun n _ p -> n::p) views []
+let get_view name = Hashtbl.find views name
+
+class virtual view (name:string) =
+object (self)
+	initializer Hashtbl.add views name (self :> view)
+
 	method virtual display : int -> int -> int -> int -> unit
 	(* Et une autre pour interpreter une commande... c'est à dire qu'on peut appeler directement
 	 * une autre méthode pour modifier l'état interne de buffer... *)
 	method virtual key : int -> unit
 end
 
-class text_view buf =
-object
-	inherit view
+class text_view name ?(append=false) buf =
+object (self)
+	inherit view name
+	val buffer = buf
 	val mutable color = 0	(* By default, use default terminal color pair (white on black usually) *)
+	val mutable no_content_color = 0
 	val mutable wrap_symbol_color = 0
 	val mutable wrap_lines = false
 
@@ -92,47 +171,81 @@ object
 		wrap_lines <- w ;
 		wrap_symbol_color <- optdef symbol_color color
 
-	(* val offset_x, offset_y, wrap_lines... *)
+	val mutable cursor = buf#mark (if append then Rope.length buf#get else 0)
+
+	(* val offset_x, offset_y... *)
 	method display x0 y0 width height =
-		let put_chr_nowrap (x, y) c =
+		let rec put_chr (x, y, n) c =
 			if y >= height then raise Exit ;
+			attrset (if n = cursor.mark_pos then A.reverse else A.normal) ;
 			if c = '\n' then (
 				for x = x to width-1 do print (x+x0) (y+y0) ' ' done ;
-				0, y+1
+				0, y+1, n+1
 			) else (
-				if x < width-1 then (
-					print (x+x0) (y+y0) c
-				) else if x = width-1 (* and not the last or next newline *) then (
-					attrset (A.color_pair wrap_symbol_color) ;
-					print (x+x0) (y+y0) '+' ;
-					attrset (A.color_pair color)
-				) ;
-				x+1, y
-			) in
-		let rec put_chr_wrap (x, y) c =
-			if y >= height then raise Exit ;
-			if c = '\n' then (
-				for x = x to width-1 do print (x+x0) (y+y0) ' ' done ;
-				0, y+1
-			) else (
-				if x < width-1 then (
-					print (x+x0) (y+y0) c ;
-					x+1, y
+				if wrap_lines then (
+					if x < width-1 then (
+						print (x+x0) (y+y0) c ;
+						x+1, y, n+1
+					) else (
+						attrset (A.color_pair wrap_symbol_color) ;
+						print (x+x0) (y+y0) '\\' ;
+						attrset (A.color_pair color) ;
+						put_chr (0, y+1, n) c
+					)
 				) else (
-					attrset (A.color_pair wrap_symbol_color) ;
-					print (x+x0) (y+y0) '\\' ;
-					attrset (A.color_pair color) ;
-					put_chr_wrap (0, y+1) c
+					if x < width-1 then (
+						print (x+x0) (y+y0) c
+					) else if x = width-1 (* and not the last or next newline *) then (
+						attrset (A.color_pair wrap_symbol_color) ;
+						print (x+x0) (y+y0) '+' ;
+						attrset (A.color_pair color)
+					) ;
+					x+1, y, n+1
 				)
 			) in
 		attrset (A.color_pair color) ;
-		let put_chr = if wrap_lines then put_chr_wrap else put_chr_nowrap in
-		try ignore (Rope.fold_left put_chr (0, 0) buf#get)
-		with Exit -> ()
+		(* So that cursor is draw even when at the end of buffer *)
+		let buf_space = Rope.cat buffer#get (Rope.singleton ' ') in
+		try
+			let x, y, _ = Rope.fold_left put_chr (0, 0, 0) buf_space in
+			(* deletes the rest of the buffer *)
+			let rec aux x y =
+				if y < height then (
+					if x < width then (
+						print (x+x0) (y+y0) ' ' ;
+						aux (x+1) y
+					) else aux 0 (y+1)
+				) in
+			attrset (A.color_pair no_content_color) ;
+			aux x y
+		with Exit -> () ;
+
+	method beep = ()
 
 	method key k =
-		let c = char_of_key k in
-		buf#append (Rope.singleton c)
+		Log.p "Got key %d" k ;
+		(* Handle cursor movement *)
+		if k = Key.left then (
+			if cursor.mark_pos <= 0 then self#beep
+			else cursor.mark_pos <- cursor.mark_pos - 1
+		) else if k = Key.right then (
+			if cursor.mark_pos >= Rope.length buffer#get then self#beep
+			else cursor.mark_pos <- cursor.mark_pos + 1
+		) else if k = Key.up then (
+		) else if k = Key.down then (
+		(* Handle deletion *)
+		) else if k = Key.backspace then (
+			if cursor.mark_pos == 0 then self#beep
+			else buffer#delete (cursor.mark_pos-1) 1
+		) else (
+			(* Other keys *)
+			let c = char_of_key k in
+			buffer#insert cursor.mark_pos (Rope.singleton c)
+		)
+
+	(* Remove our marks from buffer when we die *)
+	initializer Gc.finalise (fun _ -> buffer#unmark cursor) self
+
 end
 
 type win =
@@ -179,20 +292,18 @@ let rec display x0 y0 width height = function
 				aux next_c children' in
 		aux 0 children
 
-let repl = new text_buffer Rope.empty
-
 let root =
 	let height, width = getmaxyx (stdscr ()) in
 	Log.p "Total resolution = %d x %d" width height ;
 	Log.p "Max colors = %d" (colors ()) ;
 	Log.p "Max color pairs = %d" (color_pairs ()) ;
 	let content = new text_buffer (Rope.of_file "test.ml") in
-	let v1 = new text_view content
-	and v2 = new text_view content in
+	let v1 = new text_view "view1" content
+	and v2 = new text_view "view2" content in
 	v1#set_wrap ~symbol_color:1 true ;
 	v2#set_wrap ~symbol_color:1 false ;
 	let top = split ~split_dir:Vertical (v2:>view) (Relative 0.5) (Leaf (v1:>view)) in
-	let repl_view = new text_view repl in
+	let repl_view = new text_view "repl" ~append:true repl in
 	split (repl_view:>view) (Absolute 10) top
 
 let display_root () =
@@ -207,35 +318,8 @@ let focused =
 		| (_, Split (_, children)) :: l -> get_first_view (children @ l) in
 	get_first_view [Relative 1., root]
 
-let ends_with e r =
-	let lr = Rope.length r in
-	let le = String.length e in
-	if lr >= le then (
-		let e' = Rope.to_string (Rope.sub r (lr-le) lr) in
-		e' = e
-	) else false
-
-let rope_formatter buf =
-	let out str pos len =
-		let s = String.sub str pos len in
-		let r = Rope.of_string s in
-		Log.p "Toplevel formatting output '%s'" s ;
-		buf#append r in
-	Format.make_formatter out nop
-
-let top_eval cmd =
-	let l = Lexing.from_string cmd in
-	let ph = !Toploop.parse_toplevel_phrase l in
-	let fmt = rope_formatter repl in
-	Log.p "Executing '%s'" cmd ;
-	try Toploop.execute_phrase true fmt ph
-	with exn ->
-		Toploop.print_exception_outcome fmt exn ;
-		false
-
-let rec key_loop () =
+let key_loop () =
 	Log.p "Loop for getch" ;
-	let repl_len = Rope.length repl#get in
 	(* read keys in loop, monitoring repl buffer for new content to send to toploop *)
 	let rec next_key () =
 		display_root () ;
@@ -246,12 +330,7 @@ let rec key_loop () =
 			exit 0
 		) else (
 			focused#key k ;
-			let cur_len = Rope.length repl#get in
-			if k = 13 && cur_len > repl_len && ends_with ";;\n" repl#get then (
-				let cmd = Rope.to_string (Rope.sub repl#get repl_len cur_len) in
-				ignore (top_eval cmd) ;
-				key_loop ()
-			) else next_key ()
+			next_key ()
 		) in
 	next_key ()
 
