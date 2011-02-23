@@ -118,13 +118,14 @@ object
 			Log.p "Executing '%s'" cmd ;
 			let buffer = Buffer.create 100 in
 			let fmt = Format.formatter_of_buffer buffer in
-			let l = Lexing.from_string cmd in
-			let ph = !Toploop.parse_toplevel_phrase l in
-			let status = try
-				Toploop.execute_phrase true fmt ph
-			with exn ->
-				Toploop.print_exception_outcome fmt exn ;
-				false in
+			let status =
+				try
+					let l = Lexing.from_string cmd in
+					let ph = !Toploop.parse_toplevel_phrase l in
+					Toploop.execute_phrase true fmt ph
+				with exn ->
+					Toploop.print_exception_outcome fmt exn ;
+					false in
 			status, Rope.of_string (Buffer.contents buffer) in
 		let ends_with e r =
 			let lr = Rope.length r in
