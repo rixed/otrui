@@ -159,9 +159,20 @@ object (self)
 end
 
 class text_view name ?(append=false) buf =
+	let from_line_start pos =
+		let rec aux off pos =
+			if pos = 0 || Rope.nth buf#get (pos-1) = '\n' then off
+			else aux (off+1) (pos-1) in
+		aux 0 pos
+	and to_line_end pos =
+		let rec aux off pos =
+			if pos = Rope.length buf#get then off else
+			if Rope.nth buf#get pos = '\n' then off
+			else aux (off+1) (pos+1) in
+		aux 0 pos in
+
 object (self)
 	inherit view name
-	val buffer = buf
 	val mutable color = 0	(* By default, use default terminal color pair (white on black usually) *)
 	val mutable no_content_color = 0
 	val mutable wrap_symbol_color = 0
@@ -173,13 +184,16 @@ object (self)
 
 	val mutable cursor = buf#mark (if append then Rope.length buf#get else 0)
 
-	(* val offset_x, offset_y... *)
+	(* val offset_x, pos_first_line... *)
 	method display x0 y0 width height =
 		let rec put_chr (x, y, n) c =
 			if y >= height then raise Exit ;
 			attrset (if n = cursor.mark_pos then A.reverse else A.normal) ;
 			if c = '\n' then (
-				for x = x to width-1 do print (x+x0) (y+y0) ' ' done ;
+				for x = x to width-1 do
+					print (x+x0) (y+y0) ' ' ;
+					attrset A.normal
+				done ;
 				0, y+1, n+1
 			) else (
 				if wrap_lines then (
@@ -205,7 +219,7 @@ object (self)
 			) in
 		attrset (A.color_pair color) ;
 		(* So that cursor is draw even when at the end of buffer *)
-		let buf_space = Rope.cat buffer#get (Rope.singleton ' ') in
+		let buf_space = Rope.cat buf#get (Rope.singleton ' ') in
 		try
 			let x, y, _ = Rope.fold_left put_chr (0, 0, 0) buf_space in
 			(* deletes the rest of the buffer *)
@@ -229,22 +243,35 @@ object (self)
 			if cursor.mark_pos <= 0 then self#beep
 			else cursor.mark_pos <- cursor.mark_pos - 1
 		) else if k = Key.right then (
-			if cursor.mark_pos >= Rope.length buffer#get then self#beep
+			if cursor.mark_pos >= Rope.length buf#get then self#beep
 			else cursor.mark_pos <- cursor.mark_pos + 1
 		) else if k = Key.up then (
+			let offset = from_line_start cursor.mark_pos in
+			if offset = cursor.mark_pos then self#beep else (
+				let prev_line_len = from_line_start (cursor.mark_pos - offset - 1) in
+				cursor.mark_pos <- cursor.mark_pos - offset - 1 -
+					(if prev_line_len >= offset then prev_line_len - offset else 0)
+			)
 		) else if k = Key.down then (
+			let offset = from_line_start cursor.mark_pos in
+			let to_end = to_line_end cursor.mark_pos in
+			if cursor.mark_pos + to_end >= Rope.length buf#get - 1 then self#beep else (
+				let next_line_len = to_line_end (cursor.mark_pos + to_end + 1) in
+				cursor.mark_pos <- cursor.mark_pos + to_end + 1 +
+					(if next_line_len >= offset then offset else next_line_len)
+			)
 		(* Handle deletion *)
 		) else if k = Key.backspace then (
 			if cursor.mark_pos == 0 then self#beep
-			else buffer#delete (cursor.mark_pos-1) 1
+			else buf#delete (cursor.mark_pos-1) 1
 		) else (
 			(* Other keys *)
 			let c = char_of_key k in
-			buffer#insert cursor.mark_pos (Rope.singleton c)
+			buf#insert cursor.mark_pos (Rope.singleton c)
 		)
 
 	(* Remove our marks from buffer when we die *)
-	initializer Gc.finalise (fun _ -> buffer#unmark cursor) self
+	initializer Gc.finalise (fun _ -> buf#unmark cursor) self
 
 end
 
