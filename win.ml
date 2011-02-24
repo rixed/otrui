@@ -28,26 +28,34 @@ let size_of rem_abs = function
 	| Absolute a -> min a rem_abs
 	| Relative r -> int_of_float ((float_of_int rem_abs) *. r)
 
-let status_color = ref (Term.Color.green, Term.Color.magenta)
+let display_status left right color x0 y0 width =
+	let descr_len  = String.length left
+	and status_len = String.length right in
+	Term.set_color color ;
+	for i = 0 to width - 1 do Term.print (x0+i) y0 Term.hline done ;
+	if width >= status_len then (
+		Term.print_string (x0+width-status_len) y0 right ;
+		let width = width - status_len - 1 in
+		if width >= descr_len then
+			Term.print_string x0 y0 left
+		else
+			Term.print_string x0 y0 (String.sub left 0 width)
+	)
+
+let win_status_color = ref (Term.Color.green, Term.Color.magenta)
+let display_win_status view x0 y0 width =
+	let descr  = view#content_descr
+	and status = view#content_status in
+	display_status descr status !win_status_color x0 y0 width
+
+let global_status_color = ref (Term.Color.blue, Term.Color.black)
+let display_global_status left right y width =
+	display_status left right !global_status_color 0 y width 
+
 let display_with_status view x0 y0 width height =
-	let display_status view x0 y0 width =
-		let descr  = view#content_descr
-		and status = view#content_status in
-		let descr_len  = String.length descr
-		and status_len = String.length status in
-		Term.set_color !status_color ;
-		for i = 0 to width - 1 do Term.print (x0+i) y0 Term.hline done ;
-		if width >= status_len then (
-			Term.print_string (x0+width-status_len) y0 status ;
-			let width = width - status_len - 1 in
-			if width >= descr_len then
-				Term.print_string x0 y0 descr
-			else
-				Term.print_string x0 y0 (String.sub descr 0 width)
-		) in
 	assert (height >= 1) ;
 	if height > 1 then view#display x0 y0 width (height-1) ;
-	display_status view x0 (y0+height-1) width
+	display_win_status view x0 (y0+height-1) width
 
 let show_vert_split = ref true
 let vert_split_color = ref (Term.Color.green, Term.Color.magenta)
@@ -90,8 +98,9 @@ let root =
 	let repl_view = new View.text "repl" ~append:true Buf.repl in
 	split (repl_view:>View.t) (Absolute 10) top
 
-let display_root () =
+let display_root status_left status_right =
 	let width, height = Term.screen_size () in
-	display 0 0 width height root ;
+	if height > 1 then display 0 0 width (height-1) root ;
+	display_global_status status_left status_right (height-1) width ;
 	Term.redisplay ()
 

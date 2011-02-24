@@ -47,10 +47,13 @@ let redisplay () =
 	chk (refresh ()) ;
 	palette_reset ()
 	
+let ascii_escape = 27
+let ascii_return = 13
+
 let key () = getch ()
 
 let char_of_key k =
-	if k = Key.eol || k = 13 then '\n'
+	if k = Key.eol || k = ascii_return then '\n'
 	(* TODO: handle DEL, backspace... *)
 	(*else if k > 255 then '?'*)
 	else char_of_int k
