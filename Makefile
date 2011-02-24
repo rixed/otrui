@@ -1,10 +1,8 @@
 OCAMLPATH = ..
 
 all: otrui
-#top.byte otrui.cma
-# test.byte otrui.cma otrui.cmxa otrui 
 
-ML_SOURCES = test.ml
+ML_SOURCES = set_rectypes.ml log.ml term.ml buf.ml view.ml win.ml cmd.ml test.ml
 
 REQUIRES = unix bricabrac pfds curses
 
@@ -16,7 +14,7 @@ otrui.cma: $(ML_OBJS)
 otrui.cmxa: $(ML_XOBJS)
 	$(OCAMLOPT) -a -o $@ -package "$(REQUIRES)" $(OCAMLOPTFLAGS) $(ML_XOBJS)
 	
-otrui: set_rectypes.cmo otrui.cma
+otrui: otrui.cma
 	$(OCAMLMKTOP)  -o $@ -package "$(REQUIRES)" -g -custom $^
 
 clean-spec:
