@@ -1,3 +1,4 @@
+open Bricabrac
 module Rope = Buf.Rope
 
 type split_dir = Horizontal | Vertical 
@@ -42,20 +43,20 @@ let display_status left right color x0 y0 width =
 			Term.print_string x0 y0 (String.sub left 0 width)
 	)
 
-let win_status_color = ref (Term.Color.green, Term.Color.magenta)
-let display_win_status view x0 y0 width =
-	let descr  = view#content_descr
-	and status = view#content_status in
-	display_status descr status !win_status_color x0 y0 width
-
 let global_status_color = ref (Term.Color.blue, Term.Color.black)
 let display_global_status left right y width =
 	display_status left right !global_status_color 0 y width 
 
+let win_status_color = ref (Term.Color.green, Term.Color.magenta)
 let display_with_status view x0 y0 width height =
 	assert (height >= 1) ;
-	if height > 1 then view#display x0 y0 width (height-1) ;
-	display_win_status view x0 (y0+height-1) width
+	let descr  = view#content_descr
+	and status = view#content_status in
+	let need_status = descr <> "" || status <> "" in
+	if need_status then (
+		if height > 1 then view#display x0 y0 width (height-1) ;
+		display_status descr status !win_status_color x0 (y0+height-1) width
+	) else view#display x0 y0 width height
 
 let show_vert_split = ref true
 let vert_split_color = ref (Term.Color.green, Term.Color.magenta)
@@ -99,8 +100,40 @@ let root =
 	split (repl_view:>View.t) (Absolute 10) top
 
 let display_root status_left status_right =
+	(* FIXME: views should skip redrawing if not dirty ! *)
 	let width, height = Term.screen_size () in
 	if height > 1 then display 0 0 width (height-1) root ;
 	display_global_status status_left status_right (height-1) width ;
 	Term.redisplay ()
+
+let first_leaf root =
+	let rec aux = function
+		| [] -> failwith "No views?"
+		| (_, (Leaf _ as win)) :: _ -> win
+		| (_, Split (_, children)) :: l -> aux (children @ l) in
+	aux [ Relative 1., root ]
+	
+let rec next_to win dir way (* +1 or -1 *) =
+	Log.p "Looking for a neightboring window" ;
+	let rec lookup_list up sdir prev = function
+		| [] -> raise Not_found
+		| [ _, w ] when w = win ->
+			if dir = sdir && way = -1 && prev <> None then unopt prev else next_to up dir way
+		| (_, w) :: (_, n) :: _ when w = win ->
+			if dir = sdir && way = -1 && prev <> None then unopt prev
+			else if dir = sdir && way = 1 then n
+			else next_to up dir way
+		| (_, p) :: nexts ->
+			try lookup_tree p
+			with Not_found -> lookup_list up sdir (Some p) nexts
+	and lookup_tree = function
+		| w when w = win -> raise Not_found
+		| Leaf _ -> raise Not_found
+		| Split (sdir, children) as up -> lookup_list up sdir None children in
+	let w = lookup_tree root in
+	first_leaf w (* FIXME: should be upper_leaf or lower_leaf or rightous leaf... *)
+
+let view_of = function
+	| Leaf view -> view
+	| Split _ -> failwith "Asking for the view of a split window"
 

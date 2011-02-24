@@ -92,3 +92,6 @@ let hline, vline = int_of_char '-', int_of_char '|'
 (*	let acs = get_acs_codes () in
 	acs.Acs.hline, acs.Acs.vline
 *)
+
+let is_direction k = k = Key.up || k = Key.down || k = Key.left || k = Key.right
+
