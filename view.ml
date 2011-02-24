@@ -7,6 +7,7 @@ let views = Hashtbl.create 20
 let view_list () = Hashtbl.fold (fun n _ p -> n::p) views []
 let get_view name = Hashtbl.find views name
 let default_color = Term.Color.white, Term.Color.black
+let default_tab_width = 8
 
 class virtual t (name:string) =
 object (self)
@@ -49,10 +50,13 @@ object (self)
 	val mutable no_content_color = default_color
 	val mutable wrap_symbol_color = default_color
 	val mutable wrap_lines = false
+	val mutable tab_width = default_tab_width
 
 	method set_wrap ?(symbol_color) w =
 		wrap_lines <- w ;
 		wrap_symbol_color <- optdef symbol_color color
+
+	method set_tab_width n = tab_width <- n
 
 	val mutable pos_first_line = buf#mark 0 (* offset in buf of the first char of the first displayed line *)
 	val mutable cursor = buf#mark (if append then Rope.length buf#get else 0)
@@ -98,6 +102,14 @@ object (self)
 					Term.set_color color
 				done ;
 				0, y+1, n+1
+			) else if c = '\t' then (
+				let next_tab = ((((*offset_x+*)x) / tab_width) + 1) * tab_width in
+				Term.print (x+x0) (y+y0) (int_of_char ' ') ;
+				Term.set_color no_content_color ;
+				for x' = x+1 to next_tab-1 do
+					Term.print (x'+x0) (y+y0) (int_of_char ' ')
+				done ;
+				next_tab, y, n+1
 			) else (
 				if wrap_lines then (
 					if x < width-1 then (
@@ -150,6 +162,9 @@ object (self)
 			if cursor.Buf.pos >= Rope.length buf#get then self#beep
 			else cursor.Buf.pos <- cursor.Buf.pos + 1
 		) else if k = Term.Key.up then (
+			(* FIXME: if on_first_line cursor then beep else
+			 *        offset = x_from_line_start etc...
+			 *        this function takes into account the width of chars (tab_width...) *)
 			let offset = from_line_start cursor.Buf.pos in
 			if offset = cursor.Buf.pos then self#beep else (
 				let prev_line_len = from_line_start (cursor.Buf.pos - offset - 1) in
