@@ -4,10 +4,13 @@ open Bricabrac
 module Rope = Buf.Rope
 
 let views = Hashtbl.create 20
-let view_list () = Hashtbl.fold (fun n _ p -> n::p) views []
-let get_view name = Hashtbl.find views name
-let default_color = Term.Color.white, Term.Color.black
-let default_tab_width = 8
+let names () = Hashtbl.fold (fun n _ p -> n::p) views []
+let get name = Hashtbl.find views name
+
+let default_color = ref ((1000, 1000, 1000), (20, 20, 20))
+let default_no_content_color = ref ((1000, 1000, 1000), (0, 0, 0))
+let default_wrap_symbol_color = ref ((1000, 300, 200), (0, 0, 0))
+let default_tab_width = ref 8
 
 class virtual t (name:string) =
 object (self)
@@ -46,11 +49,11 @@ class text name ?(append=false) buf =
 	in
 object (self)
 	inherit t name
-	val mutable color = default_color
-	val mutable no_content_color = default_color
-	val mutable wrap_symbol_color = default_color
+	val mutable color = !default_color
+	val mutable no_content_color = !default_no_content_color
+	val mutable wrap_symbol_color = !default_wrap_symbol_color
 	val mutable wrap_lines = false
-	val mutable tab_width = default_tab_width
+	val mutable tab_width = !default_tab_width
 
 	method set_wrap ?(symbol_color) w =
 		wrap_lines <- w ;

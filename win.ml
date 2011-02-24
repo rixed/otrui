@@ -43,11 +43,11 @@ let display_status left right color x0 y0 width =
 			Term.print_string x0 y0 (String.sub left 0 width)
 	)
 
-let global_status_color = ref (Term.Color.blue, Term.Color.black)
+let global_status_color = ref ((0, 0, 0), (800, 800, 1000))
 let display_global_status left right y width =
 	display_status left right !global_status_color 0 y width 
 
-let win_status_color = ref (Term.Color.green, Term.Color.magenta)
+let win_status_color = ref ((1000, 1000, 1000), (300, 300, 500))
 let display_with_status view x0 y0 width height =
 	assert (height >= 1) ;
 	let descr  = view#content_descr
@@ -59,7 +59,7 @@ let display_with_status view x0 y0 width height =
 	) else view#display x0 y0 width height
 
 let show_vert_split = ref true
-let vert_split_color = ref (Term.Color.green, Term.Color.magenta)
+let vert_split_color = ref !win_status_color
 let rec display x0 y0 width height = function
 	| Leaf view -> display_with_status view x0 y0 width height
 	| Split (dir, children) ->
@@ -93,8 +93,8 @@ let root =
 	let content = new Buf.text (Rope.of_file "test.ml") "test.ml" in
 	let v1 = new View.text "view1" content
 	and v2 = new View.text "view2" content in
-	v1#set_wrap ~symbol_color:(Term.Color.yellow, Term.Color.black) true ;
-	v2#set_wrap ~symbol_color:(Term.Color.yellow, Term.Color.black) false ;
+	v1#set_wrap ~symbol_color:((0, 1000, 1000), (0, 0, 0)) true ;
+	v2#set_wrap ~symbol_color:((0, 1000, 1000), (0, 0, 0)) false ;
 	let top = split ~split_dir:Vertical (v2:>View.t) (Relative 0.5) (Leaf (v1:>View.t)) in
 	let repl_view = new View.text "repl" ~append:true Buf.repl in
 	split (repl_view:>View.t) (Absolute 10) top
