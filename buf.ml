@@ -26,23 +26,18 @@ object
 	method unmark mark = marks <- List.filter ((!=) mark) marks
 		
 	method insert pos c =
-		let l = Rope.sub content 0 pos
-		and r = Rope.sub content pos (Rope.length content) in
-		content <- Rope.cat (Rope.cat l c) r ;
+		content <- Rope.insert content pos c ;
 		let c_len = Rope.length c in
 		let offset_mark mark =
 			if mark.pos >= pos then mark.pos <- mark.pos + c_len in
 		List.iter offset_mark marks
 	
-	method delete pos n =
-		let len = Rope.length content in
-		let l = Rope.sub content 0 pos
-		and r = if pos+n <= len-1 then Rope.sub content (pos+n) len else Rope.empty in
-		Log.p "Deleting from '%s' gives '%s'+'%s'" (Rope.to_string content) (Rope.to_string l) (Rope.to_string r) ;
-		content <- Rope.cat l r ;
+	method delete start stop =
+		assert (stop >= start) ;
+		content <- Rope.cut content start stop ;
 		let update_mark mark =
-			if mark.pos >= pos+n then mark.pos <- mark.pos - n
-			else if mark.pos >= pos then mark.pos <- pos in
+			if mark.pos >= stop then mark.pos <- mark.pos - (stop-start)
+			else if mark.pos >= start then mark.pos <- start in
 		List.iter update_mark marks
 end
 
@@ -82,12 +77,28 @@ object
 		parent#insert pos c ;
 		if appending && ends_with ";;\n" content then (
 			let cur_len = Rope.length content in
+			assert (resp_end.pos < cur_len) ;
 			let cmd = Rope.sub content (resp_end.pos+1) cur_len in
 			let _status, resp = top_eval cmd in
 			parent#insert cur_len resp ;
 			parent#insert (Rope.length content) prompt ;
 			resp_end.pos <- (Rope.length content) -1
 		)
+
+	(* Disallow to delete the last prompt *)
+	method delete start stop =
+		let prompt_stop = resp_end.pos + 1 in
+		let prompt_start = prompt_stop - (Rope.length prompt) in
+		if start < prompt_stop && stop > prompt_start then (
+			(* do nothing *)
+		) else (
+			content <- Rope.cut content start stop ;
+			let update_mark mark =
+				if mark.pos >= stop then mark.pos <- mark.pos - (stop-start)
+				else if mark.pos >= start then mark.pos <- start in
+			List.iter update_mark marks
+		)
+
 end
 
 

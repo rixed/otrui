@@ -3,19 +3,13 @@
 open Bricabrac
 module Rope = Buf.Rope
 
-let views = Hashtbl.create 20
-let names () = Hashtbl.fold (fun n _ p -> n::p) views []
-let get name = Hashtbl.find views name
-
 let default_color             = ref (0, false)
 let default_no_content_color  = ref (0, false)
 let default_wrap_symbol_color = ref (0, false)
 let default_tab_width         = ref 8
 
-class virtual t (name:string) =
-object (self)
-	initializer Hashtbl.add views name (self :> t)
-
+class virtual t =
+object
 	method virtual display : int -> int -> int -> int -> unit
 	(* Et N autres pour interpreter une commande... c'est à dire qu'on peut appeler directement
 	 * une autre méthode pour modifier l'état interne de buffer... *)
@@ -24,7 +18,12 @@ object (self)
 	method virtual content_status : string (* right justified *)
 end
 
-class text name ?(append=false) buf =
+let text_views = ref []
+let as_text obj =
+	let obj = (obj:>< >) in
+	List.find (fun o -> (o :> < >) = obj) !text_views
+
+class text ?(append=false) buf =
 	let from_line_start pos =
 		let rec aux off pos =
 			if pos = 0 || Rope.nth buf#get (pos-1) = '\n' then off
@@ -48,12 +47,27 @@ class text name ?(append=false) buf =
 		with Exit -> true
 	in
 object (self)
-	inherit t name
+	inherit t
+
 	val mutable color = !default_color
 	val mutable no_content_color = !default_no_content_color
 	val mutable wrap_symbol_color = !default_wrap_symbol_color
 	val mutable wrap_lines = false
 	val mutable tab_width = !default_tab_width
+	val mutable pos_first_line = buf#mark 0 (* offset in buf of the first char of the first displayed line *)
+	val mutable cursor = buf#mark (if append then Rope.length buf#get else 0)
+	(* We start to scroll vertically if the cursor is less than this number of lines away
+	 * from window border *)
+	val mutable start_scroll_margin_y = 3
+	val mutable start_scroll_margin_x = 5
+
+	initializer
+		text_views := (self :> text) :: !text_views ;
+		(* Remove ourself from text_views and our marks from buffer when we die *)
+		Gc.finalise (fun _ ->
+			buf#unmark cursor ;
+			buf#unmark pos_first_line ;
+			text_views := List.filter (fun o -> o <> (self :> text)) !text_views) self
 
 	method set_wrap ?(symbol_color) w =
 		wrap_lines <- w ;
@@ -61,12 +75,6 @@ object (self)
 
 	method set_tab_width n = tab_width <- n
 
-	val mutable pos_first_line = buf#mark 0 (* offset in buf of the first char of the first displayed line *)
-	val mutable cursor = buf#mark (if append then Rope.length buf#get else 0)
-	(* We start to scroll vertically if the cursor is less than this number of lines away
-	 * from window border *)
-	val mutable start_scroll_margin_y = 3
-	val mutable start_scroll_margin_x = 5
 	(* Reset starting position of display according to start_scroll_margin_y *)
 	method center_cursor_y height margin =
 		assert (height >= 1) ;
@@ -185,18 +193,15 @@ object (self)
 		(* Handle deletion *)
 		) else if k = Term.Key.backspace then (
 			if cursor.Buf.pos == 0 then self#beep
-			else buf#delete (cursor.Buf.pos-1) 1
+			else buf#delete (cursor.Buf.pos-1) cursor.Buf.pos
 		) else if k = Term.Key.dc then (	(* delete *)
 			if cursor.Buf.pos == Rope.length buf#get then self#beep
-			else buf#delete (cursor.Buf.pos) 1
+			else buf#delete cursor.Buf.pos (cursor.Buf.pos + 1)
 		) else (
 			(* Other keys *)
 			let c = Term.char_of_key k in
 			buf#insert cursor.Buf.pos (Rope.singleton c)
 		)
-
-	(* Remove our marks from buffer when we die *)
-	initializer Gc.finalise (fun _ -> buf#unmark cursor) self
 
 end
 

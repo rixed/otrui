@@ -92,12 +92,12 @@ let rec display x0 y0 width height = function
 
 let root =
 	let content = new Buf.text (Rope.of_file "test.ml") "test.ml" in
-	let v1 = new View.text "view1" content
-	and v2 = new View.text "view2" content in
+	let v1 = new View.text content
+	and v2 = new View.text content in
 	v1#set_wrap true ;
 	v2#set_wrap false ;
 	let top = split ~split_dir:Vertical (v2:>View.t) (Relative 0.5) (Leaf (v1:>View.t)) in
-	let repl_view = new View.text "repl" ~append:true Buf.repl in
+	let repl_view = new View.text ~append:true Buf.repl in
 	split (repl_view:>View.t) (Absolute 10) top
 
 let display_root status_left status_right =
