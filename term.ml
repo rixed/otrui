@@ -13,10 +13,10 @@ let print_string x y str =
 		print (x+i) y (int_of_char str.[i])
 	done
 
-let next_avl_pair = ref 1 (* we do not redefine 0 that we keep for when we lack pairs *)
-let known_pairs : ((((int*int*int)*(int*int*int)),int) Hashtbl.t) = Hashtbl.create 100 (* from (fg r,g,b), (bg r,g,b) to color_pair number *)
+let next_avl_pair  = ref 1 (* we do not redefine 0 that we keep for when we lack pairs *)
+let known_pairs    = Hashtbl.create 100 (* from (fg r,g,b), (bg r,g,b) to color_pair number *)
 let next_avl_color = ref 0
-let known_colors = Hashtbl.create 100 (* from (r,g,b) to color number *)
+let known_colors   = Hashtbl.create 100 (* from (r,g,b) to color number *)
 
 let find_color (r, g, b) =
 	try Hashtbl.find known_colors (r, g, b)
@@ -37,8 +37,9 @@ let find_color (r, g, b) =
 			best_c
 		)
 
-let build_pair (fg:int*int*int) (bg:int*int*int) =
+let build_pair fg bg =
 	let p = !next_avl_pair in
+	Log.p "Build new color pair %d" p ;
 	if p < color_pairs () then (
 		let fg_c = find_color fg and bg_c = find_color bg in
 		chk (init_pair p fg_c bg_c) ;
@@ -47,17 +48,17 @@ let build_pair (fg:int*int*int) (bg:int*int*int) =
 		p
 	) else 0 (* ? *)
 
-let set_color ((fg:int*int*int), (bg:int*int*int)) =
-	let pair, need_reverse =
-		try Hashtbl.find known_pairs (fg, bg), false
-		with Not_found ->
-			try Hashtbl.find known_pairs (bg, fg), true
-			with Not_found -> build_pair fg bg, false
-	in
-	attrset (A.color_pair pair) ;
-	if need_reverse then attrset A.reverse
+let get_color fg bg =
+	try Hashtbl.find known_pairs (fg, bg), false
+	with Not_found ->
+		try Hashtbl.find known_pairs (bg, fg), true
+		with Not_found -> build_pair fg bg, false
 
-let reverse (fg, bg) = bg, fg
+let set_color (pair, reverse) =
+	attrset (A.color_pair pair) ;
+	if reverse then attrset A.reverse
+
+let reverse (pair, reverse) = (pair, not reverse)
 
 let palette_reset () =
 	next_avl_pair := 1 ;

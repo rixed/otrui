@@ -7,10 +7,10 @@ let views = Hashtbl.create 20
 let names () = Hashtbl.fold (fun n _ p -> n::p) views []
 let get name = Hashtbl.find views name
 
-let default_color = ref ((1000, 1000, 1000), (20, 20, 20))
-let default_no_content_color = ref ((1000, 1000, 1000), (0, 0, 0))
-let default_wrap_symbol_color = ref ((1000, 300, 200), (0, 0, 0))
-let default_tab_width = ref 8
+let default_color             = ref (0, false)
+let default_no_content_color  = ref (0, false)
+let default_wrap_symbol_color = ref (0, false)
+let default_tab_width         = ref 8
 
 class virtual t (name:string) =
 object (self)
@@ -200,4 +200,8 @@ object (self)
 
 end
 
+let init () =
+	default_color := Term.get_color (1000, 1000, 1000) (20, 20, 20) ;
+	default_no_content_color := Term.get_color (1000, 1000, 1000) (0, 0, 0) ;
+	default_wrap_symbol_color := Term.get_color (1000, 300, 200) (0, 0, 0)
 
