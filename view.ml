@@ -55,6 +55,7 @@ object (self)
 	val mutable wrap_lines = false
 	val mutable tab_width = !default_tab_width
 	val mutable pos_first_line = buf#mark 0 (* offset in buf of the first char of the first displayed line *)
+	val mutable offset_x = 0
 	val mutable cursor = buf#mark (if append then Rope.length buf#get else 0)
 	(* We start to scroll vertically if the cursor is less than this number of lines away
 	 * from window border *)
@@ -98,12 +99,13 @@ object (self)
 	method content_descr = buf#name
 	method content_status = "[--X---]"	(* TODO *)
 
-	(* val offset_x, pos_first_line... *)
 	(* FIXME: redraw only when buffer != last_displayed_buffer *)
 	method display x0 y0 width height =
 		Log.p "display %s from %d,%d, width=%d, height=%d" buf#name x0 y0 width height ;
 		self#center_cursor_y height start_scroll_margin_y ;
-		let rec put_chr (x, y, n) c =
+		let rec put_chr (x, xl, y, n) c =
+			(* x is the screen coordinate while xl is the number of advances (in screen positions)
+			 * from the beginning of the line. This may become different after a line wrap *)
 			if y >= height then raise Exit ;
 			if c = '\n' then (
 				Term.set_color (if n = cursor.Buf.pos then Term.reverse color else no_content_color) ;
@@ -111,44 +113,44 @@ object (self)
 					Term.print (x+x0) (y+y0) (int_of_char ' ') ;
 					Term.set_color no_content_color
 				done ;
-				0, y+1, n+1
+				0, offset_x, y+1, n+1
 			) else (
-				let char_repr x = function
+				let char_repr xl = function
 					| '\t' ->
 						if tab_width < 1 then "" else
-						let next_tab = ((((*offset_x+*)x) / tab_width) + 1) * tab_width in
-						String.make (next_tab - x) ' '
-					| x -> String.make 1 x in
-				let s = char_repr x c in
-				let rec aux idx x y =
-					if idx >= String.length s then x, y else (
+						let next_tab = ((xl / tab_width) + 1) * tab_width in
+						String.make (next_tab - xl) ' '
+					| c -> String.make 1 c in
+				let s = char_repr xl c in
+				let rec aux idx x xl y =
+					if idx >= String.length s then x, xl, y else (
 						if x < width-1 then (
 							Term.set_color (
 								if idx > 0 then no_content_color else
 								if n = cursor.Buf.pos then Term.reverse color else color) ;
 							Term.print (x+x0) (y+y0) (int_of_char s.[idx]) ;
-							aux (idx+1) (x+1) y
+							aux (idx+1) (x+1) (xl+1) y
 						) else (
 							Term.set_color wrap_symbol_color ;
 							if wrap_lines then (
 								Term.print (x+x0) (y+y0) (int_of_char '\\') ;
-								aux idx 0 (y+1)
-							) else (	(* and not the last or next newline *)
-								if x = width - 1 then
+								aux idx 0 (xl+1) (y+1)
+							) else (
+								if x = width - 1 then	(* and not the last of this line *)
 									Term.print (x+x0) (y+y0) (int_of_char '+') ;
-								aux (idx+1) (x+1) y
+								aux (idx+1) (x+1) (xl+1) y
 							)
 						)
 					) in
-				let next_x, next_y = aux 0 x y in
-				next_x, next_y, n+1
+				let next_x, next_xl, next_y = aux 0 x xl y in
+				next_x, next_xl, next_y, n+1
 			) in
 		(* So that cursor is draw even when at the end of buffer *)
 		let buf_eff = Rope.sub buf#get pos_first_line.Buf.pos (Rope.length buf#get) in
 		let buf_eff = if cursor.Buf.pos = Rope.length buf#get then
 			Rope.cat buf_eff (Rope.singleton ' ') else buf_eff in
 		(try
-			let x, y, _ = Rope.fold_left put_chr (0, 0, pos_first_line.Buf.pos) buf_eff in
+			let x, _, y, _ = Rope.fold_left put_chr (0, offset_x, 0, pos_first_line.Buf.pos) buf_eff in
 			(* deletes the rest of the buffer *)
 			let rec aux x y =
 				if y < height then (
