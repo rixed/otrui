@@ -44,7 +44,7 @@ end
 (* There's only one repl buffer *)
 let repl =
 	let prompt = Rope.of_string "# " in
-object
+object (self)
 	inherit text prompt "REPL" as parent
 
 	val mutable resp_end = { pos = 0 }	(* not really *)
@@ -84,6 +84,9 @@ object
 			parent#insert (Rope.length content) prompt ;
 			resp_end.pos <- (Rope.length content) -1
 		)
+
+	(* shortcut *)
+	method append c = self#insert (Rope.length content) c
 
 	(* Disallow to delete the last prompt *)
 	method delete start stop =

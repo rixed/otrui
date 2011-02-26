@@ -69,9 +69,7 @@ object (self)
 			buf#unmark pos_first_line ;
 			text_views := List.filter (fun o -> o <> (self :> text)) !text_views) self
 
-	method set_wrap ?(symbol_color) w =
-		wrap_lines <- w ;
-		wrap_symbol_color <- optdef symbol_color color
+	method set_wrap w = wrap_lines <- w
 
 	method set_tab_width n = tab_width <- n
 
@@ -101,52 +99,54 @@ object (self)
 	method content_status = "[--X---]"	(* TODO *)
 
 	(* val offset_x, pos_first_line... *)
+	(* FIXME: redraw only when buffer != last_displayed_buffer *)
 	method display x0 y0 width height =
 		Log.p "display %s from %d,%d, width=%d, height=%d" buf#name x0 y0 width height ;
 		self#center_cursor_y height start_scroll_margin_y ;
 		let rec put_chr (x, y, n) c =
 			if y >= height then raise Exit ;
-			Term.set_color (if n = cursor.Buf.pos then Term.reverse color else color) ;
 			if c = '\n' then (
+				Term.set_color (if n = cursor.Buf.pos then Term.reverse color else no_content_color) ;
 				for x = x to width-1 do
 					Term.print (x+x0) (y+y0) (int_of_char ' ') ;
-					Term.set_color color
+					Term.set_color no_content_color
 				done ;
 				0, y+1, n+1
-			) else if c = '\t' then (
-				let next_tab = ((((*offset_x+*)x) / tab_width) + 1) * tab_width in
-				Term.print (x+x0) (y+y0) (int_of_char ' ') ;
-				Term.set_color no_content_color ;
-				for x' = x+1 to next_tab-1 do
-					Term.print (x'+x0) (y+y0) (int_of_char ' ')
-				done ;
-				next_tab, y, n+1
 			) else (
-				if wrap_lines then (
-					if x < width-1 then (
-						Term.print (x+x0) (y+y0) (int_of_char c) ;
-						x+1, y, n+1
-					) else (
-						Term.set_color wrap_symbol_color ;
-						Term.print (x+x0) (y+y0) (int_of_char '\\') ;
-						Term.set_color color ;
-						put_chr (0, y+1, n) c
-					)
-				) else (
-					if x < width-1 then (
-						Term.print (x+x0) (y+y0) (int_of_char c)
-					) else if x = width-1 (* and not the last or next newline *) then (
-						Term.set_color wrap_symbol_color ;
-						Term.print (x+x0) (y+y0) (int_of_char '+') ;
-						Term.set_color color
-					) ;
-					x+1, y, n+1
-				)
+				let char_repr x = function
+					| '\t' ->
+						if tab_width < 1 then "" else
+						let next_tab = ((((*offset_x+*)x) / tab_width) + 1) * tab_width in
+						String.make (next_tab - x) ' '
+					| x -> String.make 1 x in
+				let s = char_repr x c in
+				let rec aux idx x y =
+					if idx >= String.length s then x, y else (
+						if x < width-1 then (
+							Term.set_color (
+								if idx > 0 then no_content_color else
+								if n = cursor.Buf.pos then Term.reverse color else color) ;
+							Term.print (x+x0) (y+y0) (int_of_char s.[idx]) ;
+							aux (idx+1) (x+1) y
+						) else (
+							Term.set_color wrap_symbol_color ;
+							if wrap_lines then (
+								Term.print (x+x0) (y+y0) (int_of_char '\\') ;
+								aux idx 0 (y+1)
+							) else (	(* and not the last or next newline *)
+								if x = width - 1 then
+									Term.print (x+x0) (y+y0) (int_of_char '+') ;
+								aux (idx+1) (x+1) y
+							)
+						)
+					) in
+				let next_x, next_y = aux 0 x y in
+				next_x, next_y, n+1
 			) in
-		Term.set_color color ;
 		(* So that cursor is draw even when at the end of buffer *)
 		let buf_eff = Rope.sub buf#get pos_first_line.Buf.pos (Rope.length buf#get) in
-		let buf_eff = Rope.cat buf_eff (Rope.singleton ' ') in
+		let buf_eff = if cursor.Buf.pos = Rope.length buf#get then
+			Rope.cat buf_eff (Rope.singleton ' ') else buf_eff in
 		(try
 			let x, y, _ = Rope.fold_left put_chr (0, 0, pos_first_line.Buf.pos) buf_eff in
 			(* deletes the rest of the buffer *)
@@ -159,7 +159,7 @@ object (self)
 				) in
 			Term.set_color no_content_color ;
 			aux x y
-		with Exit -> ()) ;
+		with Exit -> ())
 
 	method beep = ()
 
@@ -206,7 +206,7 @@ object (self)
 end
 
 let init () =
-	default_color := Term.get_color (1000, 1000, 1000) (20, 20, 20) ;
-	default_no_content_color := Term.get_color (1000, 1000, 1000) (0, 0, 0) ;
-	default_wrap_symbol_color := Term.get_color (1000, 300, 200) (0, 0, 0)
+	default_color             := Term.get_color (1000, 1000, 1000) (30, 30, 30) ;
+	default_no_content_color  := Term.get_color (1000, 1000, 1000) (0, 0, 0) ;
+	default_wrap_symbol_color := Term.get_color (1000, 400, 400) (0, 0, 0)
 

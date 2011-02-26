@@ -24,6 +24,7 @@ let find_color (r, g, b) =
 		if can_change_color () && !next_avl_color < colors () then (
 			let c = !next_avl_color in
 			chk (init_color c r g b) ;
+			Log.p "Defining new color %d for %d,%d,%d" c r g b ;
 			Hashtbl.add known_colors (r, g, b) c ;
 			incr next_avl_color ;
 			c
@@ -39,10 +40,12 @@ let find_color (r, g, b) =
 
 let build_pair fg bg =
 	let p = !next_avl_pair in
-	Log.p "Build new color pair %d" p ;
 	if p < color_pairs () then (
 		let fg_c = find_color fg and bg_c = find_color bg in
 		chk (init_pair p fg_c bg_c) ;
+		let (fg_r, fg_g, fg_b), (bg_r, bg_g, bg_b) = fg, bg in
+		Log.p "Build new color pair %d with colors %d (%d,%d,%d) and %d (%d,%d,%d)"
+			p fg_c fg_r fg_g fg_b bg_c bg_r bg_g bg_b ;
 		Hashtbl.add known_pairs (fg, bg) p ;
 		incr next_avl_pair ;
 		p

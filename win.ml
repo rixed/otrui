@@ -17,8 +17,8 @@ let win_sub_sizes children =
 
 let default_split_dir = Horizontal
 
-let split ?(split_dir=default_split_dir) view size win =
-	Split (split_dir, [ size, Leaf view ; Relative 1., win ])
+let split ?(split_dir=default_split_dir) win1 size win2 =
+	Split (split_dir, [ size, win1 ; Relative 1., win2 ])
 
 let resplit view size = function
 	| Leaf _ -> failwith "Cannot resplit leaf window"
@@ -91,19 +91,13 @@ let rec display x0 y0 width height = function
 		aux 0 children
 
 let root =
-	let content = new Buf.text (Rope.of_file "test.ml") "test.ml" in
-	let v1 = new View.text content
-	and v2 = new View.text content in
-	v1#set_wrap true ;
-	v2#set_wrap false ;
-	let top = split ~split_dir:Vertical (v2:>View.t) (Relative 0.5) (Leaf (v1:>View.t)) in
-	let repl_view = new View.text ~append:true Buf.repl in
-	split (repl_view:>View.t) (Absolute 10) top
+	let root_view = new View.text ~append:true Buf.repl in
+	ref (Leaf (root_view :> View.t))
 
 let display_root status_left status_right =
 	(* FIXME: views should skip redrawing if not dirty ! *)
 	let width, height = Term.screen_size () in
-	if height > 1 then display 0 0 width (height-1) root ;
+	if height > 1 then display 0 0 width (height-1) !root ;
 	display_global_status status_left status_right (height-1) width ;
 	Term.redisplay ()
 
@@ -131,7 +125,7 @@ let rec next_to win dir way (* +1 or -1 *) =
 		| w when w = win -> raise Not_found
 		| Leaf _ -> raise Not_found
 		| Split (sdir, children) as up -> lookup_list up sdir None children in
-	let w = lookup_tree root in
+	let w = lookup_tree !root in
 	first_leaf w (* FIXME: should be upper_leaf or lower_leaf or rightous leaf... *)
 
 let view_of = function
@@ -139,7 +133,17 @@ let view_of = function
 	| Split _ -> failwith "Asking for the view of a split window"
 
 let init () =
-	global_status_color := Term.get_color (0, 0, 0) (800, 800, 1000) ;
+	global_status_color := Term.get_color (0, 0, 0) (800, 800, 800) ;
 	win_status_color    := Term.get_color (1000, 1000, 1000) (300, 300, 500) ;
-	vert_split_color    := !win_status_color
+	vert_split_color    := !win_status_color ;
+
+	let content = new Buf.text (Rope.of_file "test.ml") "test.ml" in
+	let v1 = new View.text content
+	and v2 = new View.text content in
+	v1#set_wrap true ;
+	v2#set_wrap false ;
+	let wins = split ~split_dir:Vertical (Leaf (v2:>View.t)) (Relative 0.5) (Leaf (v1:>View.t)) in
+	let root_view = new View.text ~append:true Buf.repl in
+	let repl_win = Leaf (root_view :> View.t) in
+	root := split repl_win (Absolute 10) wins
 
