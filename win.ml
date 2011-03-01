@@ -74,9 +74,9 @@ let split_size size ds show_split =
 	let hs = size/2 in
 	let ds = if ds >= hs then hs-1 else if ds <= -hs then (-hs)+1 else ds in
 	let ls = hs + ds in
-	let rs = size - ls in
 	let ss = if show_split then 1 else 0 in
-	if ls < 1 + ss then 0, 0, size else if rs < 1 then size, 0, 0 else ls, ss, rs
+	let rs = size - ls - ss in
+	if ls < 1 then 0, 0, size else if rs < 1 then size, 0, 0 else ls, ss, rs
 
 let focus_up = function
 	| _, NoExtend -> raise Not_found
