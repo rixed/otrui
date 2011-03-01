@@ -59,6 +59,12 @@ object (self)
 		let out str i l = parent#append (Rope.of_func l (fun j -> str.[i+j])) in
 		Format.make_formatter out nop
 
+	method append_prompt =
+		if resp_end.pos < (Rope.length content) -1 then (
+			parent#append prompt ;
+			resp_end.pos <- (Rope.length content) -1
+		)
+
 	method insert pos c =
 		let top_eval cmd =
 			let cmd = Rope.to_string cmd in
@@ -89,15 +95,12 @@ object (self)
 			assert (resp_end.pos < cur_len) ;
 			let cmd = Rope.sub content (resp_end.pos+1) cur_len in
 			let _status = top_eval cmd in
-			parent#append prompt ;
-			resp_end.pos <- (Rope.length content) -1
+			self#append_prompt
 		)
 	
 	method eval str =
 		(* First, append a prompt and moves the cmd start pointer here *)
-		(* FIXME: only if the previous prompt is not at the end of buffer *)
-		parent#append prompt ;
-		resp_end.pos <- (Rope.length content) -1 ;
+		self#append_prompt ;
 		(* Then append the cmd (with proper termination) *)
 		self#append (Rope.of_string str) ;
 		self#append (Rope.of_string ";;\n")

@@ -2,17 +2,19 @@ OCAMLPATH = ..
 
 all: otrui system.cmo plugins/toto.cmo
 
-ML_SOURCES = set_rectypes.ml log.ml term.ml buf.ml view.ml win.ml cmd.ml otrui.ml
+OTRUI_SOURCES = set_rectypes.ml log.ml term.ml buf.ml view.ml win.ml cmd.ml otrui.ml
+OTHER_SOURCES = system.ml plugins/toto.ml
+ML_SOURCES = $(OTRUI_SOURCES) $(OTHER_SOURCES)
 
 REQUIRES = unix bricabrac pfds curses
 
 include make.common
 
-otrui.cma: $(ML_OBJS)
-	$(OCAMLC)   -a -o $@ -package "$(REQUIRES)" -custom -linkpkg $(OCAMLFLAGS) $(ML_OBJS)
+otrui.cma: $(OTRUI_SOURCES:.ml=.cmo)
+	$(OCAMLC)   -a -o $@ -package "$(REQUIRES)" -custom -linkpkg $(OCAMLFLAGS) $^
 
-otrui.cmxa: $(ML_XOBJS)
-	$(OCAMLOPT) -a -o $@ -package "$(REQUIRES)" $(OCAMLOPTFLAGS) $(ML_XOBJS)
+otrui.cmxa: $(OTRUI_SOURCES:.ml=.cmx)
+	$(OCAMLOPT) -a -o $@ -package "$(REQUIRES)" $(OCAMLOPTFLAGS) $^
 	
 otrui: otrui.cma
 	$(OCAMLMKTOP)  -o $@ -package "$(REQUIRES)" -g -custom $^
