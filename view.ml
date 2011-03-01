@@ -10,7 +10,7 @@ let default_tab_width         = ref 8
 
 class virtual t =
 object
-	method virtual display : int -> int -> int -> int -> unit
+	method virtual display : int -> int -> int -> int -> bool -> unit
 	(* Et N autres pour interpreter une commande... c'est à dire qu'on peut appeler directement
 	 * une autre méthode pour modifier l'état interne de buffer... *)
 	method virtual key : int -> unit
@@ -100,7 +100,7 @@ object (self)
 	method content_status = "[--X---]"	(* TODO *)
 
 	(* FIXME: redraw only when buffer != last_displayed_buffer *)
-	method display x0 y0 width height =
+	method display x0 y0 width height focused =
 		Log.p "display %s from %d,%d, width=%d, height=%d" buf#name x0 y0 width height ;
 		self#center_cursor_y height start_scroll_margin_y ;
 		let rec put_chr (x, xl, y, n) c =
@@ -108,7 +108,7 @@ object (self)
 			 * from the beginning of the line. This may become different after a line wrap *)
 			if y >= height then raise Exit ;
 			if c = '\n' then (
-				Term.set_color (if n = cursor.Buf.pos then Term.reverse color else no_content_color) ;
+				Term.set_color (if focused && n = cursor.Buf.pos then Term.reverse color else no_content_color) ;
 				for x = x to width-1 do
 					Term.print (x+x0) (y+y0) (int_of_char ' ') ;
 					Term.set_color no_content_color
@@ -127,7 +127,7 @@ object (self)
 						if x < width-1 then (
 							Term.set_color (
 								if idx > 0 then no_content_color else
-								if n = cursor.Buf.pos then Term.reverse color else color) ;
+								if focused && n = cursor.Buf.pos then Term.reverse color else color) ;
 							Term.print (x+x0) (y+y0) (int_of_char s.[idx]) ;
 							aux (idx+1) (x+1) (xl+1) y
 						) else (
@@ -147,7 +147,7 @@ object (self)
 			) in
 		(* So that cursor is draw even when at the end of buffer *)
 		let buf_eff = Rope.sub buf#get pos_first_line.Buf.pos (Rope.length buf#get) in
-		let buf_eff = if cursor.Buf.pos = Rope.length buf#get then
+		let buf_eff = if focused && cursor.Buf.pos = Rope.length buf#get then
 			Rope.cat buf_eff (Rope.singleton ' ') else buf_eff in
 		(try
 			let x, _, y, _ = Rope.fold_left put_chr (0, offset_x, 0, pos_first_line.Buf.pos) buf_eff in

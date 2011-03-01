@@ -1,0 +1,4 @@
+open Buf;;
+
+repl#append (Rope.of_string "Loading preference file...\n");;
+

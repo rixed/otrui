@@ -1,4 +1,5 @@
 (* Buffers are somewhat editable content. *)
+open Bricabrac
 module Rope = Rope_impl.Make
 
 class virtual t =
@@ -10,7 +11,7 @@ end
 type mark = { mutable pos: int }
 
 class text init_content name =
-object
+object (self)
 	inherit t
 	val mutable content = init_content
 	method get = content
@@ -32,6 +33,9 @@ object
 			if mark.pos >= pos then mark.pos <- mark.pos + c_len in
 		List.iter offset_mark marks
 	
+	(* shortcut *)
+	method append c = self#insert (Rope.length content) c
+
 	method delete start stop =
 		assert (stop >= start) ;
 		content <- Rope.cut content start stop ;
@@ -46,26 +50,31 @@ let repl =
 	let prompt = Rope.of_string "# " in
 object (self)
 	inherit text prompt "REPL" as parent
-
+	
 	val mutable resp_end = { pos = 0 }	(* not really *)
 	initializer
-		resp_end <- parent#mark (Rope.length prompt -1)
+		resp_end <- parent#mark (Rope.length prompt -1) ;
+	
+	method formatter =
+		let out str i l = parent#append (Rope.of_func l (fun j -> str.[i+j])) in
+		Format.make_formatter out nop
 
 	method insert pos c =
 		let top_eval cmd =
 			let cmd = Rope.to_string cmd in
 			Log.p "Executing '%s'" cmd ;
-			let buffer = Buffer.create 100 in
-			let fmt = Format.formatter_of_buffer buffer in
-			let status =
-				try
-					let l = Lexing.from_string cmd in
-					let ph = !Toploop.parse_toplevel_phrase l in
-					Toploop.execute_phrase true fmt ph
-				with exn ->
-					Toploop.print_exception_outcome fmt exn ;
-					false in
-			status, Rope.of_string (Buffer.contents buffer) in
+			try
+				let l = Lexing.from_string cmd in
+				let ph = !Toploop.parse_toplevel_phrase l in
+				Toploop.execute_phrase true self#formatter ph
+			with exn ->
+				let save = !Toploop.parse_use_file in
+				Toploop.parse_use_file := (fun _ -> raise exn) ;
+				ignore (Toploop.use_silently self#formatter "/dev/null") ;
+				Toploop.parse_use_file := save ;
+				false
+				(*Toploop.print_exception_outcome self#formatter exn ;
+				false*) in
 		let ends_with e r =
 			let lr = Rope.length r in
 			let le = String.length e in
@@ -79,14 +88,19 @@ object (self)
 			let cur_len = Rope.length content in
 			assert (resp_end.pos < cur_len) ;
 			let cmd = Rope.sub content (resp_end.pos+1) cur_len in
-			let _status, resp = top_eval cmd in
-			parent#insert cur_len resp ;
-			parent#insert (Rope.length content) prompt ;
+			let _status = top_eval cmd in
+			parent#append prompt ;
 			resp_end.pos <- (Rope.length content) -1
 		)
-
-	(* shortcut *)
-	method append c = self#insert (Rope.length content) c
+	
+	method eval str =
+		(* First, append a prompt and moves the cmd start pointer here *)
+		(* FIXME: only if the previous prompt is not at the end of buffer *)
+		parent#append prompt ;
+		resp_end.pos <- (Rope.length content) -1 ;
+		(* Then append the cmd (with proper termination) *)
+		self#append (Rope.of_string str) ;
+		self#append (Rope.of_string ";;\n")
 
 	(* Disallow to delete the last prompt *)
 	method delete start stop =
@@ -104,4 +118,4 @@ object (self)
 
 end
 
-
+let init () = ()

@@ -1,8 +1,8 @@
 OCAMLPATH = ..
 
-all: otrui
+all: otrui system.cmo plugins/toto.cmo
 
-ML_SOURCES = set_rectypes.ml log.ml term.ml buf.ml view.ml win.ml cmd.ml test.ml
+ML_SOURCES = set_rectypes.ml log.ml term.ml buf.ml view.ml win.ml cmd.ml otrui.ml
 
 REQUIRES = unix bricabrac pfds curses
 

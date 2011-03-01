@@ -2,32 +2,32 @@ open Bricabrac
 module Rope = Buf.Rope
 
 type split_dir = Horizontal | Vertical 
-type split_size = Absolute of int (* min abs size *) | Relative of float
-
-type win =
-	| Leaf of View.t
-	| Split of (split_dir * (split_size * win) list)
-
-let win_sub_sizes children =
-	let rec aux abs rel = function
-		| [] -> abs, rel
-		| (Absolute a, _)::l -> aux (abs+a) rel l
-		| (Relative r, _)::l -> aux abs (rel+.r) l in
-	aux 0 0. children
-
 let default_split_dir = Horizontal
 
-let split ?(split_dir=default_split_dir) win1 size win2 =
-	Split (split_dir, [ size, win1 ; Relative 1., win2 ])
+type way = Up | Down | Left | Right
+type up_t = Extend of (way * int * down_t * up_t) | NoExtend
+and down_t =
+	| Leaf of View.t
+	| Split of (split_dir * down_t * int * down_t)
+and t = down_t * up_t
 
-let resplit view size = function
-	| Leaf _ -> failwith "Cannot resplit leaf window"
-	| Split (split_dir, children) ->
-		Split (split_dir, (size, Leaf view) :: children)
+let singleton view = Leaf view, NoExtend
+let split (down, up) view = function
+	| Up    -> Split (Horizontal, Leaf view, 0, down), up
+	| Down  -> Split (Horizontal, down, 0, Leaf view), up
+	| Left  -> Split (Vertical,   Leaf view, 0, down), up
+	| Right -> Split (Vertical,   down, 0, Leaf view), up
 
-let size_of rem_abs = function
-	| Absolute a -> min a rem_abs
-	| Relative r -> int_of_float ((float_of_int rem_abs) *. r)
+(*let rec first_of_down = function
+	| Leaf _ as x -> x
+	| Split (_, l, _, _) -> first_of_down l*)
+
+(* delete the down tree. *)
+let delete = function
+	| _, NoExtend -> raise Not_found
+	| _, Extend (_, _, down, up) -> down, up
+
+let other_way = function Up -> Down | Down -> Up | Left -> Right | Right -> Left
 
 let display_status left right color x0 y0 width =
 	let descr_len  = String.length left
@@ -43,56 +43,84 @@ let display_status left right color x0 y0 width =
 			Term.print_string x0 y0 (String.sub left 0 width)
 	)
 
-let global_status_color = ref (0, false)
-let win_status_color    = ref (0, false)
-let vert_split_color    = ref (0, false)
+let global_status_color  = ref (0, false)
+let win_status_color     = ref (0, false)
+let focused_status_color = ref (0, false)
+let vert_split_color     = ref (0, false)
 
 let display_global_status left right y width =
 	display_status left right !global_status_color 0 y width 
 
-let display_with_status view x0 y0 width height =
+let display_with_status view x0 y0 width height is_focused =
 	assert (height >= 1) ;
 	let descr  = view#content_descr
 	and status = view#content_status in
 	let need_status = descr <> "" || status <> "" in
 	if need_status then (
-		if height > 1 then view#display x0 y0 width (height-1) ;
-		display_status descr status !win_status_color x0 (y0+height-1) width
-	) else view#display x0 y0 width height
+		if height > 1 then view#display x0 y0 width (height-1) is_focused ;
+		let color = if is_focused then !focused_status_color else !win_status_color in
+		display_status descr status color x0 (y0+height-1) width
+	) else view#display x0 y0 width height is_focused
 
-let show_vert_split = ref true
-let rec display x0 y0 width height = function
-	| Leaf view -> display_with_status view x0 y0 width height
-	| Split (dir, children) ->
-		let rec aux c = function
-			| [] -> failwith "should not happen"
-			| [_, win] ->
-				let x0, y0, width, height = match dir with
-				| Horizontal -> x0, c, width, height - c
-				| Vertical -> c, y0, width - c, height in
-				if width > 0 && height > 0 then display x0 y0 width height win
-			| (sz, win) :: children' ->
-				let x0, y0, width, height = match dir with
-				| Horizontal -> x0, c, width, size_of (height - c) sz
-				| Vertical -> c, y0, size_of (width - c) sz, height in
-				if width > 0 && height > 0 then (
-					if dir = Vertical && !show_vert_split then (
-						if width > 1 then display x0 y0 (width-1) height win ;
-						Term.set_color !vert_split_color ;
-						for y = 0 to (height-1) do
-							Term.print (x0+width-1) (y0+y) Term.vline
-						done
-					) else (
-						display x0 y0 width height win
-					)
-				) ;
-				let next_c = match dir with Horizontal -> y0 + height | Vertical -> x0 + width in
-				aux next_c children' in
-		aux 0 children
+let show_split = ref true
+
+let display_vert_split x0 y0 height =
+	Term.set_color !vert_split_color ;
+	for y = 0 to (height-1) do
+		Term.print x0 (y0+y) Term.vline
+	done
+
+let split_size size ds show_split =
+	let hs = size/2 in
+	let ds = if ds >= hs then hs-1 else if ds <= -hs then (-hs)+1 else ds in
+	let ls = hs + ds in
+	let rs = size - ls in
+	let ss = if show_split then 1 else 0 in
+	if ls < 1 + ss then 0, 0, size else if rs < 1 then size, 0, 0 else ls, ss, rs
+
+let focus_up = function
+	| _, NoExtend -> raise Not_found
+	| down, Extend (Up, sz, exdown, exup) ->
+		Split (Horizontal, exdown, sz, down), exup
+	| down, Extend (Down, sz, exdown, exup) ->
+		Split (Horizontal, down, sz, exdown), exup
+	| down, Extend (Left, sz, exdown, exup) ->
+		Split (Vertical, exdown, sz, down), exup
+	| down, Extend (Right, sz, exdown, exup) ->
+		Split (Vertical, down, sz, exdown), exup
+
+let focus_down = function
+	| Leaf _, _ -> raise Not_found
+	| Split (dir, l, sz, r), up ->
+		(* we descend into left window *)
+		let way = if dir = Vertical then Right else Down in
+		l, Extend (way, sz, r, up)
+
+let rec make_outer_root = function
+	| down, NoExtend -> down
+	| x -> make_outer_root (focus_up x)
+
+let rec display_down x0 y0 width height focused = function
+	| Leaf view as w -> display_with_status view x0 y0 width height (w == focused)
+	| Split (dir, l, ds, r) ->
+		match dir with
+			| Horizontal ->
+				let lh, _, rh = split_size height ds false in
+				if lh > 0 then display_down x0 y0 width lh focused l ;
+				if rh > 0 then display_down x0 (y0+lh) width rh focused r
+			| Vertical ->
+				let lw, sw, rw = split_size width ds !show_split in
+				if lw > 0 then display_down x0 y0 lw height focused l ;
+				if sw > 0 then display_vert_split (x0+lw) y0 height ;
+				if rw > 0 then display_down (x0+lw+sw) y0 rw height focused r
+
+let display x0 y0 width height ((focused, _) as t) =
+	let alldown = make_outer_root t in
+	display_down x0 y0 width height focused alldown
 
 let root =
 	let root_view = new View.text ~append:true Buf.repl in
-	ref (Leaf (root_view :> View.t))
+	ref (Leaf (root_view :> View.t), NoExtend)
 
 let display_root status_left status_right =
 	(* FIXME: views should skip redrawing if not dirty ! *)
@@ -101,49 +129,39 @@ let display_root status_left status_right =
 	display_global_status status_left status_right (height-1) width ;
 	Term.redisplay ()
 
-let first_leaf root =
-	let rec aux = function
-		| [] -> failwith "No views?"
-		| (_, (Leaf _ as win)) :: _ -> win
-		| (_, Split (_, children)) :: l -> aux (children @ l) in
-	aux [ Relative 1., root ]
-	
-let rec next_to win dir way (* +1 or -1 *) =
-	Log.p "Looking for a neightboring window" ;
-	let rec lookup_list up sdir prev = function
-		| [] -> raise Not_found
-		| [ _, w ] when w = win ->
-			if dir = sdir && way = -1 && prev <> None then unopt prev else next_to up dir way
-		| (_, w) :: (_, n) :: _ when w = win ->
-			if dir = sdir && way = -1 && prev <> None then unopt prev
-			else if dir = sdir && way = 1 then n
-			else next_to up dir way
-		| (_, p) :: nexts ->
-			try lookup_tree p
-			with Not_found -> lookup_list up sdir (Some p) nexts
-	and lookup_tree = function
-		| w when w = win -> raise Not_found
-		| Leaf _ -> raise Not_found
-		| Split (sdir, children) as up -> lookup_list up sdir None children in
-	let w = lookup_tree !root in
-	first_leaf w (* FIXME: should be upper_leaf or lower_leaf or rightous leaf... *)
+let rec focus_to way = function
+	| _, NoExtend -> raise Not_found
+	| down, Extend (w, sz, exdown, exup) when w = way ->
+		exdown, Extend (other_way w, sz, down, exup)
+	| t -> focus_to way (focus_up t)
+
+let resize way amount (down, up) =
+	let rec resize_up way = function
+		| NoExtend -> raise Not_found
+		| Extend (w, sz, exdown, exup) when w = way ->
+			let ds = if w = Down || w = Right then amount else -amount in
+			Extend (w, sz+ds, exdown, exup)
+		| Extend (w, sz, exdown, exup) ->
+			Extend (w, sz, exdown, resize_up way exup) in
+	down, resize_up way up
 
 let view_of = function
-	| Leaf view -> view
-	| Split _ -> failwith "Asking for the view of a split window"
+	| Leaf view, _ -> view
+	| Split _, _ -> raise Not_found
 
 let init () =
-	global_status_color := Term.get_color (0, 0, 0) (800, 800, 800) ;
-	win_status_color    := Term.get_color (1000, 1000, 1000) (300, 300, 500) ;
-	vert_split_color    := !win_status_color ;
+	global_status_color  := Term.get_color (0, 0, 0) (800, 800, 800) ;
+	win_status_color     := Term.get_color (0, 0, 0) (900, 900, 900) ;
+	focused_status_color := Term.get_color (1000, 1000, 1000) (300, 300, 500) ;
+	vert_split_color     := !win_status_color ;
 
-	let content = new Buf.text (Rope.of_file "test.ml") "test.ml" in
+	let content = new Buf.text (Rope.of_file "otrui.ml") "otrui.ml" in
 	let v1 = new View.text content
 	and v2 = new View.text content in
 	v1#set_wrap true ;
 	v2#set_wrap false ;
-	let wins = split ~split_dir:Vertical (Leaf (v2:>View.t)) (Relative 0.5) (Leaf (v1:>View.t)) in
-	let root_view = new View.text ~append:true Buf.repl in
-	let repl_win = Leaf (root_view :> View.t) in
-	root := split repl_win (Absolute 10) wins
+	root := split !root (v1 :> View.t) Down ;
+	root := focus_to Down (focus_down !root) ;
+	root := split !root (v2 :> View.t) Right ;
+	root := focus_to Up !root
 
