@@ -24,7 +24,7 @@ let execute = function
 		Log.p "Changing focus" ;
 		(try
 			let way = way_of_key dir in
-			Win.root := Win.focus_to way !Win.root
+			Win.root := Win.first_viewable (Win.focus_to way !Win.root)
 		with Not_found ->
 			last_result := "No window there")
 	| [ w ; npage ] when w = c2i 'w' && npage = Term.Key.npage ->

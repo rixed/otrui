@@ -18,10 +18,6 @@ let split (down, up) view = function
 	| Left  -> Split (Vertical,   Leaf view, 0, down), up
 	| Right -> Split (Vertical,   down, 0, Leaf view), up
 
-(*let rec first_of_down = function
-	| Leaf _ as x -> x
-	| Split (_, l, _, _) -> first_of_down l*)
-
 (* delete the down tree. *)
 let delete = function
 	| _, NoExtend -> raise Not_found
@@ -95,6 +91,10 @@ let focus_down = function
 		(* we descend into left window *)
 		let way = if dir = Vertical then Right else Down in
 		l, Extend (way, sz, r, up)
+
+let rec first_viewable = function
+	| Leaf _, _ as x -> x
+	| x -> first_viewable (focus_down x)
 
 let rec make_outer_root = function
 	| down, NoExtend -> down
