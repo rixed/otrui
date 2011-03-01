@@ -17,11 +17,6 @@ let fix_topdirs () =
 
 let start =
 	fix_topdirs () ;
-	Term.init () ;
-	Buf.init () ;
-	View.init () ;
-	Win.init () ;
-	Cmd.init () ;
 	let instdir = "." in
 	Buf.repl#eval ("#load \""^instdir^"/system.cmo\"") ;
 	Buf.repl#eval ("#use \""^(Unix.getenv "HOME")^".otrui.rc\"") ;

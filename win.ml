@@ -149,7 +149,7 @@ let view_of = function
 	| Leaf view, _ -> view
 	| Split _, _ -> raise Not_found
 
-let init () =
+let init =
 	global_status_color  := Term.get_color (0, 0, 0) (800, 800, 800) ;
 	win_status_color     := Term.get_color (0, 0, 0) (900, 900, 900) ;
 	focused_status_color := Term.get_color (1000, 1000, 1000) (300, 300, 500) ;

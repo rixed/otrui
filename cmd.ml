@@ -118,4 +118,3 @@ let key_loop () =
 		) in
 	forever next_key ()
 
-let init () = ()

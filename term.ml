@@ -89,7 +89,7 @@ let screen_size () =
 	let height, width = getmaxyx win in
 	width, height
 
-let init () =
+let init =
 	Log.p "Initializing ncurses..." ;
 	ignore (initscr ()) ;
 	assert (has_colors ()) ; (* FIXME *)

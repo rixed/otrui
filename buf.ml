@@ -118,4 +118,3 @@ object (self)
 
 end
 
-let init () = ()

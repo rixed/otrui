@@ -207,7 +207,7 @@ object (self)
 
 end
 
-let init () =
+let init =
 	default_color             := Term.get_color (1000, 1000, 1000) (30, 30, 30) ;
 	default_no_content_color  := Term.get_color (1000, 1000, 1000) (0, 0, 0) ;
 	default_wrap_symbol_color := Term.get_color (1000, 400, 400) (0, 0, 0)
