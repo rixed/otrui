@@ -12,9 +12,12 @@ let way_of_key dir =
 	if dir = Term.Key.right then Win.Right else
 	invalid_arg "not a direction"
 
-let execute = function
+let rec execute count = function
 	(* nop *)
 	| [] -> last_result := ""
+	(* repetition count *)
+	| c :: rest when c >= c2i '0' && c <= c2i '9' ->
+		execute (count*10 + c - (c2i '0')) rest
 	(* quit *)
 	| [ q ] when q = c2i 'q' ->
 		Log.p "Quit" ;
@@ -24,24 +27,32 @@ let execute = function
 		Log.p "Changing focus" ;
 		(try
 			let way = way_of_key dir in
-			Win.root := Win.first_viewable (Win.focus_to way !Win.root)
+			for c = 1 to count do
+				Win.root := Win.first_viewable (Win.focus_to way !Win.root)
+			done
 		with Not_found ->
 			last_result := "No window there")
 	| [ w ; npage ] when w = c2i 'w' && npage = Term.Key.npage ->
 		(try
-			Win.root := Win.focus_down !Win.root
+			for c = 1 to count do
+				Win.root := Win.focus_down !Win.root
+			done
 		with Not_found ->
 			last_result := "No window down there")
 	| [ w ; ppage ] when w = c2i 'w' && ppage = Term.Key.ppage ->
 		(try
-			Win.root := Win.focus_up !Win.root
+			for c = 1 to count do
+				Win.root := Win.focus_up !Win.root
+			done
 		with Not_found ->
 			last_result := "No window up there")
 	(* change window size *)
 	| [ w ; a ; dir ] when w = c2i 'w' && (a = c2i '+' || a = c2i '-') && Term.is_direction dir ->
 		let way = way_of_key dir in
 		(try
-			Win.root := Win.resize way (if a = c2i '+' then 1 else ~-1) !Win.root
+			for c = 1 to count do
+				Win.root := Win.resize way (if a = c2i '+' then 1 else ~-1) !Win.root
+			done
 		with Not_found ->
 			last_result := "Cannot resize in this direction")
 	(* send a command to the repl *)
@@ -50,7 +61,7 @@ let execute = function
 			let cmd = List.map char_of_int cmd in
 			let cmd = Rope.of_list cmd in
 			let cmd = Rope.to_string cmd in (* ouf! *)
-			Buf.repl#eval cmd
+			for c = 1 to count do Buf.repl#eval cmd done
 		with Invalid_argument _ ->
 			last_result := "Cannot exec this 'string'")
 	(* and '!' to send a command to a shell, opening a new shell view if none already opened ?
@@ -111,7 +122,10 @@ let key_loop () =
 						k > 255
 					) in
 				if do_exec then (
-					execute (List.rev !command) ;
+					let cmd = match List.rev !command with
+						| h::_ as l when h >= c2i '0' && h <= c2i '9' -> l
+						| x -> int_of_char '1' :: x in	
+					execute 0 cmd ;
 					command := [] ;
 					if !auto_insert && focused <> None then mode := Insert
 				)
