@@ -27,32 +27,25 @@ let rec execute count = function
 		Log.p "Changing focus" ;
 		(try
 			let way = way_of_key dir in
-			for c = 1 to count do
-				Win.root := Win.first_viewable (Win.focus_to way !Win.root)
-			done
+			for c = 1 to count do Win.move_focus_to way done
 		with Not_found ->
 			last_result := "No window there")
 	| [ w ; npage ] when w = c2i 'w' && npage = Term.Key.npage ->
 		(try
-			for c = 1 to count do
-				Win.root := Win.focus_down !Win.root
-			done
+			for c = 1 to count do Win.deepen_focus () done
 		with Not_found ->
 			last_result := "No window down there")
 	| [ w ; ppage ] when w = c2i 'w' && ppage = Term.Key.ppage ->
 		(try
-			for c = 1 to count do
-				Win.root := Win.focus_up !Win.root
-			done
+			for c = 1 to count do Win.widen_focus () done
 		with Not_found ->
 			last_result := "No window up there")
 	(* change window size *)
 	| [ w ; a ; dir ] when w = c2i 'w' && (a = c2i '+' || a = c2i '-') && Term.is_direction dir ->
 		let way = way_of_key dir in
 		(try
-			for c = 1 to count do
-				Win.root := Win.resize way (if a = c2i '+' then 1 else ~-1) !Win.root
-			done
+			let sz = if a = c2i '+' then 1 else ~-1 in
+			for c = 1 to count do Win.resize_focus way sz done
 		with Not_found ->
 			last_result := "Cannot resize in this direction")
 	(* send a command to the repl *)
@@ -110,7 +103,7 @@ let key_loop () =
 			)
 		) else (
 			match !mode with
-			| Insert -> (Win.view_of !Win.root)#key k
+			| Insert -> (unopt focused)#key k
 			| Command ->
 				let do_exec =
 					if k = Term.ascii_return then true else

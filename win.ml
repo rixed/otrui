@@ -165,3 +165,10 @@ let init =
 	root := split !root (v2 :> View.t) Right ;
 	root := focus_to Up !root
 
+(* Helpers to manipulate root directly *)
+
+let move_focus_to way   = root := first_viewable (focus_to way !root)
+let deepen_focus ()     = root := focus_down !root
+let widen_focus ()      = root := focus_up !root
+let resize_focus way sz = root := resize way sz !root
+
