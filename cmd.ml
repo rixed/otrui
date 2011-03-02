@@ -1,6 +1,27 @@
 open Bricabrac
 module Rope = Buf.Rope
 
+(* Helpers *)
+
+(* This function requires both views and wins so cannot be implemented in view module. *)
+let views () =
+	let rec show_texts prevs = function
+		| [] -> prevs
+		| txt :: rest ->
+			let buf = txt#get_buf#name in
+			let is_mapped = Win.is_mapped (txt:>View.t) in
+			let is_focused = Win.is_focused (txt:>View.t) in	
+			let descr = (txt :> View.t), "text", buf, is_mapped, is_focused in
+			show_texts (descr :: prevs) rest in
+	show_texts [] !View.text_views
+
+let string_of_view (_, kind, buf, is_mapped, is_focused) =
+	Printf.sprintf "%s%s: %s"
+		(if is_focused then "*" else if is_mapped then " " else "_")
+		kind buf
+
+(* Command parse and execute *)
+
 let last_result = ref ""
 
 let c2i = int_of_char
@@ -55,6 +76,39 @@ let rec execute count = function
 			for c = 1 to count do Win.exchange_focus way done
 		with Not_found ->
 			last_result := "No other window in this direction")
+	(* Unmap the focused view *)
+	| [ w ; d ] when w = c2i 'w' && d = c2i 'd' ->
+		(try
+			for c = 1 to count do Win.delete_focus () done
+		with Not_found ->
+			last_result := "Cannot unmap everything")
+	(* Change the view of the focused window to the next one *)
+	| [ b ; n ] when b = c2i 'b' && n = c2i 'n' ->
+		(try
+			let views = views () in
+			let first = List.hd views in
+			let rec aux take_next = function
+				| [] -> assert take_next ; first
+				| (v, _, _, _, _) as vdescr :: rest ->
+					if take_next then vdescr else aux (Win.is_focused v) rest in
+			(match aux false views with (v, _, bufname, _, _) ->
+				Win.set_view v ;
+				last_result := Printf.sprintf "Viewing '%s'" bufname)
+		with Not_found ->
+			last_result := "Not a single views?")
+	(* Change the view of the focused window to the previous one *)
+	| [ b ; p ] when b = c2i 'b' && p = c2i 'p' ->
+		(try
+			let views = views () in
+			let rec aux prev = function
+				| [] -> prev (* the first was focused *)
+				| (v, _, _, _, _) as vdescr :: rest ->
+					if Win.is_focused v then prev else aux vdescr rest in
+			(match aux (List.hd views) (List.tl views) with (v, _, bufname, _, _) ->
+				Win.set_view v ;
+				last_result := Printf.sprintf "Viewing '%s'" bufname)
+		with Not_found ->
+			last_result := "Not a single views?")
 	(* send a command to the repl *)
 	| bang :: cmd when bang = c2i '#' ->
 		(try

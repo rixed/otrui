@@ -118,6 +118,5 @@ object (self)
 				else if mark.pos >= start then mark.pos <- start in
 			List.iter update_mark marks
 		)
-
 end
 

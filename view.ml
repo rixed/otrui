@@ -11,10 +11,8 @@ let default_tab_width         = ref 8
 class virtual t =
 object
 	method virtual display : int -> int -> int -> int -> bool -> unit
-	(* Et N autres pour interpreter une commande... c'est à dire qu'on peut appeler directement
-	 * une autre méthode pour modifier l'état interne de buffer... *)
 	method virtual key : int -> unit
-	method virtual content_descr  : string (* left justified *)
+	method virtual content_descr  : string (* left justified in the status line *)
 	method virtual content_status : string (* right justified *)
 end
 
@@ -69,6 +67,8 @@ object (self)
 			buf#unmark cursor ;
 			buf#unmark pos_first_line ;
 			text_views := List.filter (fun o -> o <> (self :> text)) !text_views) self
+
+	method get_buf = (buf :> Buf.t)
 
 	method set_wrap w = wrap_lines <- w
 

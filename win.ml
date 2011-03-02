@@ -12,6 +12,16 @@ and down_t =
 and t = down_t * up_t
 
 let singleton view = Leaf view, NoExtend
+
+let exists f (down, up) =
+	let rec exists_down = function
+		| Leaf v -> f v
+		| Split (_, l, _, r) -> exists_down l || exists_down r
+	and exists_up = function
+		| NoExtend -> false
+		| Extend (_, _, exdown, exup) -> exists_down exdown || exists_up exup in
+	exists_down down || exists_up up
+
 let split (down, up) view = function
 	| Up    -> Split (Horizontal, Leaf view, 0, down), up
 	| Down  -> Split (Horizontal, down, 0, Leaf view), up
@@ -181,3 +191,7 @@ let deepen_focus ()     = root := deepen !root
 let widen_focus ()      = root := widen !root
 let resize_focus way sz = root := resize way sz !root
 let exchange_focus way  = root := exchange way !root
+let delete_focus ()     = root := delete !root
+let is_focused view     = match !root with Leaf v, _ -> (v :> < >) = (view :> < >) | _ -> false
+let is_mapped view      = exists (fun v -> (v :> < >) = (view :> < >)) !root
+let set_view view       = match !root with _, up -> root := Leaf view, up

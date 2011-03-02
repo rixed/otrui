@@ -3,7 +3,7 @@ module Rope = Buf.Rope
 
 let fix_topdirs () =
 	Log.p "Fixing toplevel directives so that they do not use stdout but repl_fmt" ;
-	(* Shaddow the usefull topdirs that use std_formatter with ones that use repl#formatter *)
+	(* Shadow the useful topdirs that use std_formatter with ones that use repl#formatter *)
 	let fmt = Buf.repl#formatter in
 	Hashtbl.add Toploop.directive_table "use" (Toploop.Directive_string (Topdirs.dir_use fmt)) ;
 	Hashtbl.add Toploop.directive_table "load" (Toploop.Directive_string (Topdirs.dir_load fmt)) ;
@@ -16,6 +16,8 @@ let fix_topdirs () =
 	Hashtbl.add Toploop.directive_table "remove_printer" (Toploop.Directive_ident (Topdirs.dir_remove_printer fmt))
 
 let start =
+	Toploop.set_paths () ;
+	Toploop.initialize_toplevel_env () ;
 	fix_topdirs () ;
 	let instdir = "." in
 	Buf.repl#eval ("#load \""^instdir^"/system.cmo\"") ;
