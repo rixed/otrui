@@ -33,12 +33,7 @@ let way_of_key dir =
 	if dir = Term.Key.right then Win.Right else
 	invalid_arg "not a direction"
 
-let rec execute count = function
-	(* nop *)
-	| [] -> last_result := ""
-	(* repetition count *)
-	| c :: rest when c >= c2i '0' && c <= c2i '9' ->
-		execute (count*10 + c - (c2i '0')) rest
+let execute_single = function
 	(* quit *)
 	| [ q ] when q = c2i 'q' ->
 		Log.p "Quit" ;
@@ -48,17 +43,15 @@ let rec execute count = function
 		Log.p "Changing focus" ;
 		(try
 			let way = way_of_key dir in
-			for c = 1 to count do Win.move_focus_to way done
+			Win.move_focus_to way
 		with Not_found ->
 			last_result := "No window there")
 	| [ w ; npage ] when w = c2i 'w' && npage = Term.Key.npage ->
-		(try
-			for c = 1 to count do Win.deepen_focus () done
+		(try Win.deepen_focus ()
 		with Not_found ->
 			last_result := "No window down there")
 	| [ w ; ppage ] when w = c2i 'w' && ppage = Term.Key.ppage ->
-		(try
-			for c = 1 to count do Win.widen_focus () done
+		(try Win.widen_focus ()
 		with Not_found ->
 			last_result := "No window up there")
 	(* change window size *)
@@ -66,20 +59,18 @@ let rec execute count = function
 		let way = way_of_key dir in
 		(try
 			let sz = if a = c2i '+' then 1 else ~-1 in
-			for c = 1 to count do Win.resize_focus way sz done
+			Win.resize_focus way sz
 		with Not_found ->
 			last_result := "Cannot resize in this direction")
 	(* Exchange two windows *)
 	| [ w ; x ; dir ] when w = c2i 'w' && x = c2i 'x' && Term.is_direction dir ->
 		let way = way_of_key dir in
-		(try
-			for c = 1 to count do Win.exchange_focus way done
+		(try Win.exchange_focus way
 		with Not_found ->
 			last_result := "No other window in this direction")
 	(* Unmap the focused view *)
 	| [ w ; d ] when w = c2i 'w' && d = c2i 'd' ->
-		(try
-			for c = 1 to count do Win.delete_focus () done
+		(try Win.delete_focus ()
 		with Not_found ->
 			last_result := "Cannot unmap everything")
 	(* Change the view of the focused window to the next one *)
@@ -109,13 +100,17 @@ let rec execute count = function
 				last_result := Printf.sprintf "Viewing '%s'" bufname)
 		with Not_found ->
 			last_result := "Not a single views?")
+	(* Split the current focused window *)
+	| [ w ; s ; dir ] when w = c2i 'w' && s = c2i 's' && Term.is_direction dir ->
+		(try Win.split_focus (way_of_key dir)
+		with _ -> last_result := "Cannot split?")
 	(* send a command to the repl *)
 	| bang :: cmd when bang = c2i '#' ->
 		(try
 			let cmd = List.map char_of_int cmd in
 			let cmd = Rope.of_list cmd in
 			let cmd = Rope.to_string cmd in (* ouf! *)
-			for c = 1 to count do Buf.repl#eval cmd done
+			Buf.repl#eval cmd
 		with Invalid_argument _ ->
 			last_result := "Cannot exec this 'string'")
 	(* and '!' to send a command to a shell, opening a new shell view if none already opened ?
@@ -127,6 +122,15 @@ let rec execute count = function
 	 * (il faudra alors penser à ajouter des hooks) *)
 	(* unrecognized command *)
 	| _ -> last_result := "Unknown command"
+
+let rec execute ?count = function
+	(* nop *)
+	| [] -> last_result := ""
+	(* repetition count *)
+	| c :: rest when c >= c2i '0' && c <= c2i '9' ->
+		execute ~count:((optdef count 0)*10 + c - (c2i '0')) rest
+	| cmd ->
+		for c = 1 to (optdef count 1) do execute_single cmd done
 
 let string_of_command command =
 	let len = List.length command in
@@ -176,10 +180,7 @@ let key_loop () =
 						k > 255
 					) in
 				if do_exec then (
-					let cmd = match List.rev !command with
-						| h::_ as l when h >= c2i '0' && h <= c2i '9' -> l
-						| x -> int_of_char '1' :: x in	
-					execute 0 cmd ;
+					execute (List.rev !command) ;
 					command := [] ;
 					if !auto_insert && focused <> None then mode := Insert
 				)

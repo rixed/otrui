@@ -106,6 +106,10 @@ let rec first_viewable = function
 	| Leaf _, _ as x -> x
 	| x -> first_viewable (deepen x)
 
+let rec first_view = function
+	| Leaf v, _ -> v
+	| x -> first_view (deepen x)
+
 let rec make_outer_root = function
 	| down, NoExtend -> down
 	| x -> make_outer_root (widen x)
@@ -191,7 +195,8 @@ let deepen_focus ()     = root := deepen !root
 let widen_focus ()      = root := widen !root
 let resize_focus way sz = root := resize way sz !root
 let exchange_focus way  = root := exchange way !root
-let delete_focus ()     = root := delete !root
+let delete_focus ()     = root := first_viewable (delete !root)
+let split_focus dir     = root := first_viewable (split !root (first_view !root) dir)
 let is_focused view     = match !root with Leaf v, _ -> (v :> < >) = (view :> < >) | _ -> false
 let is_mapped view      = exists (fun v -> (v :> < >) = (view :> < >)) !root
 let set_view view       = match !root with _, up -> root := Leaf view, up
