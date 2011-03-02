@@ -74,7 +74,7 @@ let split_size size ds show_split =
 	let rs = size - ls - ss in
 	if ls < 1 then 0, 0, size else if rs < 1 then size, 0, 0 else ls, ss, rs
 
-let focus_up = function
+let widen = function
 	| _, NoExtend -> raise Not_found
 	| down, Extend (Up, sz, exdown, exup) ->
 		Split (Horizontal, exdown, sz, down), exup
@@ -85,7 +85,7 @@ let focus_up = function
 	| down, Extend (Right, sz, exdown, exup) ->
 		Split (Vertical, down, sz, exdown), exup
 
-let focus_down = function
+let deepen = function
 	| Leaf _, _ -> raise Not_found
 	| Split (dir, l, sz, r), up ->
 		(* we descend into left window *)
@@ -94,11 +94,11 @@ let focus_down = function
 
 let rec first_viewable = function
 	| Leaf _, _ as x -> x
-	| x -> first_viewable (focus_down x)
+	| x -> first_viewable (deepen x)
 
 let rec make_outer_root = function
 	| down, NoExtend -> down
-	| x -> make_outer_root (focus_up x)
+	| x -> make_outer_root (widen x)
 
 let rec display_down x0 y0 width height focused = function
 	| Leaf view as w -> display_with_status view x0 y0 width height (w == focused)
@@ -133,17 +133,26 @@ let rec focus_to way = function
 	| _, NoExtend -> raise Not_found
 	| down, Extend (w, sz, exdown, exup) when w = way ->
 		exdown, Extend (other_way w, sz, down, exup)
-	| t -> focus_to way (focus_up t)
+	| t -> focus_to way (widen t)
 
 let resize way amount (down, up) =
-	let rec resize_up way = function
+	let rec resize_up = function
 		| NoExtend -> raise Not_found
 		| Extend (w, sz, exdown, exup) when w = way ->
 			let ds = if w = Down || w = Right then amount else -amount in
 			Extend (w, sz+ds, exdown, exup)
 		| Extend (w, sz, exdown, exup) ->
-			Extend (w, sz, exdown, resize_up way exup) in
-	down, resize_up way up
+			Extend (w, sz, exdown, resize_up exup) in
+	down, resize_up up
+
+let exchange way (down, up) =
+	let rec exchg_up = function
+		| NoExtend -> raise Not_found
+		| Extend (w, sz, exdown, exup) when w = way ->
+			Extend (other_way w, sz, exdown, exup)
+		| Extend (w, sz, exdown, exup) ->
+			Extend (w, sz, exdown, exchg_up exup) in
+	down, exchg_up up
 
 let view_of = function
 	| Leaf view, _ -> view
@@ -161,14 +170,14 @@ let init =
 	v1#set_wrap true ;
 	v2#set_wrap false ;
 	root := split !root (v1 :> View.t) Down ;
-	root := focus_to Down (focus_down !root) ;
+	root := focus_to Down (deepen !root) ;
 	root := split !root (v2 :> View.t) Right ;
 	root := focus_to Up !root
 
 (* Helpers to manipulate root directly *)
 
 let move_focus_to way   = root := first_viewable (focus_to way !root)
-let deepen_focus ()     = root := focus_down !root
-let widen_focus ()      = root := focus_up !root
+let deepen_focus ()     = root := deepen !root
+let widen_focus ()      = root := widen !root
 let resize_focus way sz = root := resize way sz !root
-
+let exchange_focus way  = root := exchange way !root

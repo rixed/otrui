@@ -48,6 +48,13 @@ let rec execute count = function
 			for c = 1 to count do Win.resize_focus way sz done
 		with Not_found ->
 			last_result := "Cannot resize in this direction")
+	(* Exchange two windows *)
+	| [ w ; x ; dir ] when w = c2i 'w' && x = c2i 'x' && Term.is_direction dir ->
+		let way = way_of_key dir in
+		(try
+			for c = 1 to count do Win.exchange_focus way done
+		with Not_found ->
+			last_result := "No other window in this direction")
 	(* send a command to the repl *)
 	| bang :: cmd when bang = c2i '#' ->
 		(try
