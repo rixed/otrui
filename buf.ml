@@ -53,7 +53,7 @@ object (self)
 	
 	val mutable resp_end = { pos = 0 }	(* not really *)
 	initializer
-		resp_end <- parent#mark (Rope.length prompt -1) ;
+		resp_end <- parent#mark (Rope.length prompt -1)
 	
 	method formatter =
 		let out str i l = parent#append (Rope.of_func l (fun j -> str.[i+j])) in
@@ -109,14 +109,7 @@ object (self)
 	method delete start stop =
 		let prompt_stop = resp_end.pos + 1 in
 		let prompt_start = prompt_stop - (Rope.length prompt) in
-		if start < prompt_stop && stop > prompt_start then (
-			(* do nothing *)
-		) else (
-			content <- Rope.cut content start stop ;
-			let update_mark mark =
-				if mark.pos >= stop then mark.pos <- mark.pos - (stop-start)
-				else if mark.pos >= start then mark.pos <- start in
-			List.iter update_mark marks
-		)
+		if start >= prompt_stop || stop <= prompt_start then
+			parent#delete start stop
 end
 

@@ -1,9 +1,9 @@
 OCAMLPATH = ..
 
-all: otrui otrui.byte system.cmo plugins/toto.cmo
+all: otrui otrui.byte system.cmo plugins/pipe.cmo
 
 OTRUI_SOURCES = set_rectypes.ml log.ml term.ml buf.ml view.ml win.ml cmd.ml otrui.ml
-OTHER_SOURCES = system.ml plugins/toto.ml
+OTHER_SOURCES = system.ml plugins/pipe.ml
 ML_SOURCES = $(OTRUI_SOURCES) $(OTHER_SOURCES)
 
 REQUIRES = unix bricabrac pfds curses
