@@ -170,61 +170,76 @@ object (self)
 			aux x y
 		with Exit -> ())
 
-	method cursor_up =
-		(* FIXME: if on_first_line cursor then beep else
-		 *        offset = x_from_line_start etc...
-		 *        this function takes into account the width of chars (tab_width...) *)
-		let offset = from_line_start cursor.Buf.pos in
-		if offset = cursor.Buf.pos then raise Cannot_move ;
-		let prev_line_len = from_line_start (cursor.Buf.pos - offset - 1) in
-		cursor.Buf.pos <- cursor.Buf.pos - offset - 1 -
+	method move_up mark =
+		let offset = from_line_start mark.Buf.pos in
+		if offset = mark.Buf.pos then raise Cannot_move ;
+		let prev_line_len = from_line_start (mark.Buf.pos - offset - 1) in
+		mark.Buf.pos <- mark.Buf.pos - offset - 1 -
 			(if prev_line_len >= offset then prev_line_len - offset else 0)
 	
-	method cursor_down =
-		let offset = from_line_start cursor.Buf.pos in
-		let to_end = to_line_end cursor.Buf.pos in
-		if cursor.Buf.pos + to_end >= Rope.length buf#get - 1 then raise Cannot_move ;
-		let next_line_len = to_line_end (cursor.Buf.pos + to_end + 1) in
-		cursor.Buf.pos <- cursor.Buf.pos + to_end + 1 +
+	method move_down mark =
+		let offset = from_line_start mark.Buf.pos in
+		let to_end = to_line_end mark.Buf.pos in
+		if mark.Buf.pos + to_end >= Rope.length buf#get - 1 then raise Cannot_move ;
+		let next_line_len = to_line_end (mark.Buf.pos + to_end + 1) in
+		mark.Buf.pos <- mark.Buf.pos + to_end + 1 +
 			(if next_line_len >= offset then offset else next_line_len)
 	
-	method cursor_left =
-		if cursor.Buf.pos <= 0 then raise Cannot_move ;
-		cursor.Buf.pos <- cursor.Buf.pos - 1
+	method move_left mark =
+		if mark.Buf.pos <= 0 then raise Cannot_move ;
+		mark.Buf.pos <- mark.Buf.pos - 1
 	
-	method cursor_right =
-		if cursor.Buf.pos >= Rope.length buf#get then raise Cannot_move ;
-		cursor.Buf.pos <- cursor.Buf.pos + 1
+	method move_right mark =
+		if mark.Buf.pos >= Rope.length buf#get then raise Cannot_move ;
+		mark.Buf.pos <- mark.Buf.pos + 1
+	
+	method move_page_up mark = for i = 1 to last_height - 1 do self#move_up mark done
+	method move_page_down mark = for i = 1 to last_height - 1 do self#move_down mark done
+
+	method move_to_line_start mark =
+		let disp = from_line_start mark.Buf.pos in
+		mark.Buf.pos <- mark.Buf.pos - disp
+
+	method move_to_line_end mark =
+		let disp = to_line_end mark.Buf.pos in
+		mark.Buf.pos <- mark.Buf.pos + disp
+	
+	method move_to_start mark = mark.Buf.pos <- 0
+	method move_to_end   mark = mark.Buf.pos <- Rope.length buf#get
+
+	method insert_char_of_key k mark =
+		let c = Term.char_of_key k in
+		buf#insert mark.Buf.pos (Rope.singleton c)
+	
+	method backspace mark =
+		if mark.Buf.pos == 0 then raise Cannot_move ;
+		buf#delete (mark.Buf.pos-1) mark.Buf.pos
+
+	method delete mark =
+		if mark.Buf.pos == Rope.length buf#get then raise Cannot_move ;
+		buf#delete mark.Buf.pos (mark.Buf.pos + 1)
+
+	val key_bindings = Hashtbl.create 11
+	initializer
+		Hashtbl.add key_bindings Term.Key.left        self#move_left ;
+		Hashtbl.add key_bindings Term.Key.right       self#move_right ;
+		Hashtbl.add key_bindings Term.Key.up          self#move_up ;
+		Hashtbl.add key_bindings Term.Key.down        self#move_down ;
+		Hashtbl.add key_bindings Term.Key.ppage       self#move_page_up ;
+		Hashtbl.add key_bindings Term.Key.npage       self#move_page_down ;
+		Hashtbl.add key_bindings 1 (* Ctrl+A *)       self#move_to_line_start ;
+		Hashtbl.add key_bindings 5 (* Ctrl+E *)       self#move_to_line_end ;
+		Hashtbl.add key_bindings 551 (* Ctrl+PPage *) self#move_to_start ;
+		Hashtbl.add key_bindings 546 (* Ctrl+NPage *) self#move_to_end ;
+		Hashtbl.add key_bindings Term.Key.backspace   self#backspace ;
+		Hashtbl.add key_bindings Term.Key.dc          self#delete
 
 	method key k =
 		Log.p "Got key %d" k ;
-		(try 
-			(* Handle cursor movement *)
-			if k = Term.Key.left then (
-				self#cursor_left
-			) else if k = Term.Key.right then (
-				self#cursor_right
-			) else if k = Term.Key.up then (
-				self#cursor_up
-			) else if k = Term.Key.down then (
-				self#cursor_down
-			) else if k = Term.Key.ppage then (
-				for i = 1 to last_height - 1 do self#cursor_up done
-			) else if k = Term.Key.npage then (
-				for i = 1 to last_height - 1 do self#cursor_down done
-			(* Handle deletion *)
-			) else if k = Term.Key.backspace then (
-				if cursor.Buf.pos == 0 then Term.beep ()
-				else buf#delete (cursor.Buf.pos-1) cursor.Buf.pos
-			) else if k = Term.Key.dc then (	(* delete *)
-				if cursor.Buf.pos == Rope.length buf#get then Term.beep ()
-				else buf#delete cursor.Buf.pos (cursor.Buf.pos + 1)
-			) else (
-				(* Other keys *)
-				let c = Term.char_of_key k in
-				buf#insert cursor.Buf.pos (Rope.singleton c)
-			)
-		with Cannot_move -> Term.beep ())
+		let f =
+			try Hashtbl.find key_bindings k
+			with Not_found -> self#insert_char_of_key k in
+		(try f cursor with Cannot_move -> Term.beep ())
 
 end
 
