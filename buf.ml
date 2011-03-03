@@ -76,13 +76,12 @@ object (self)
 				let ph = !Toploop.parse_toplevel_phrase l in
 				Toploop.execute_phrase true self#formatter ph
 			with exn ->
+				(* Idea borrowed from Guillaume Yziquel *)
 				let save = !Toploop.parse_use_file in
 				Toploop.parse_use_file := (fun _ -> raise exn) ;
 				ignore (Toploop.use_silently self#formatter "/dev/null") ;
 				Toploop.parse_use_file := save ;
 				false
-				(*Toploop.print_exception_outcome self#formatter exn ;
-				false*)
 		in
 		let ends_with e r =
 			let lr = Rope.length r in
