@@ -1,35 +1,37 @@
-(* This is a plugin for otrui that show how to implement a new kind of buffer.
- * This one implements a pipe, ie. everything you type in this buffer is send as stdin
- * to a program, and every output of the program is appended to the buffer. *)
 open Bricabrac
 open Buf
 
-let doc = "This modules implements a buffer type suitable for controlling an external program"
+let doc = "This is a plugin for otrui that show how to implement a new kind of buffer.
+This one implements a pipe, ie. everything you type in this buffer is send as stdin
+to a program, and every output of the program is appended to the buffer."
 
 let _ = repl#append (Rope.of_string "Loading pipe buffer\n")
 
 class t program =
 	let prompt = Rope.of_string ">% "
-	and ch_in, ch_out = Unix.open_process program in
+	and env = Unix.environment () in
+	let ch_in, ch_out, ch_err = Unix.open_process_full program env in
 object (self)
 	inherit text prompt (Printf.sprintf "|%s" program) as parent
 
 	val mutable resp_end = { pos = 0 }
-	val mutable reader_thread = None
+	val mutable reader_threads = []
 
-	method read_output () =
+	method reader ch =
 		let aux () =
-			let line = input_line ch_in in
+			let line = input_line ch in
 			Log.p "Receiving string '%s' from program '%s'" line program ;
 			let line = Rope.cat (Rope.of_string line) (Rope.singleton '\n') in
 			let pos = resp_end.pos + 1 - (Rope.length prompt) in
 			parent#insert pos line in
 		forever aux ()
-
+	
 	initializer
 		resp_end <- parent#mark (Rope.length prompt -1) ;
-		Gc.finalise (fun _ -> ignore (Unix.close_process (ch_in, ch_out))) self ;
-		reader_thread <- Some (Thread.create self#read_output ())
+		Gc.finalise (fun _ -> ignore (Unix.close_process_full (ch_in, ch_out, ch_err))) self ;
+		reader_threads <- [
+			Thread.create self#reader ch_in ;
+			Thread.create self#reader ch_err ]
 
 	method append_prompt =
 		if resp_end.pos < (Rope.length content) -1 then (
