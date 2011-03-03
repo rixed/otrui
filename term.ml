@@ -80,8 +80,7 @@ let key () = getch ()
 
 let char_of_key k =
 	if k = Key.eol || k = ascii_return then '\n'
-	(* TODO: handle DEL, backspace... *)
-	(*else if k > 255 then '?'*)
+	else if k > 255 then '?'
 	else char_of_int k
 
 let screen_size () =
@@ -121,3 +120,4 @@ let hline, vline = int_of_char '-', int_of_char '|'
 
 let is_direction k = k = Key.up || k = Key.down || k = Key.left || k = Key.right
 
+let beep () = chk (flash ())

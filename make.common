@@ -28,7 +28,7 @@ ML_XOBJS = $(ML_SOURCES:.ml=.cmx)
 	$(OCAMLOPT) -package "$(REQUIRES)" $(OCAMLOPTFLAGS) -c $<
 
 .cmo.byte:
-	$(OCAMLC)   -o $@ -package "$(REQUIRES)" -linkpkg $(OCAMLFLAGS) toplevellib.cma $^
+	$(OCAMLC)   -o $@ -package "$(REQUIRES)" -linkpkg -linkall $(OCAMLFLAGS) toplevellib.cma $^
 
 .cmx.opt:
 	$(OCAMLOPT) -o $@ -package "$(REQUIRES)" -linkpkg $(OCAMLOPTFLAGS) $^

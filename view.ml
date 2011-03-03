@@ -21,6 +21,8 @@ let as_text obj =
 	let obj = (obj:>< >) in
 	List.find (fun o -> (o :> < >) = obj) !text_views
 
+exception Cannot_move
+
 class text ?(append=false) buf =
 	let from_line_start pos =
 		let rec aux off pos =
@@ -33,10 +35,12 @@ class text ?(append=false) buf =
 			if Rope.nth buf#get pos = '\n' then off
 			else aux (off+1) (pos+1) in
 		aux 0 pos in
-	let nb_lines_between pos1 pos2 =
-		let s = Rope.sub buf#get pos1 pos2 in
-		Rope.fold_left (fun l c -> if c = '\n' then l+1 else l) 0 s in
-	let more_lines_than n pos =	(* Check that there are more than n lines from pos to end *)
+	let rec nb_lines_between pos1 pos2 =
+		if pos2 >= pos1 then
+			let s = Rope.sub buf#get pos1 pos2 in
+			Rope.fold_left (fun l c -> if c = '\n' then l+1 else l) 0 s
+		else - (nb_lines_between pos2 pos1)
+	and more_lines_than n pos =	(* Check that there are more than n lines from pos to end *)
 		let s = Rope.sub buf#get pos (Rope.length buf#get) in
 		try ignore (Rope.fold_left (fun l c ->
 			if c = '\n' then (if l >= n then raise Exit else l+1)
@@ -59,6 +63,8 @@ object (self)
 	 * from window border *)
 	val mutable start_scroll_margin_y = 3
 	val mutable start_scroll_margin_x = 5
+	val mutable last_height = 1
+	val mutable last_width = 1
 
 	initializer
 		text_views := (self :> text) :: !text_views ;
@@ -102,6 +108,7 @@ object (self)
 	(* FIXME: redraw only when buffer != last_displayed_buffer *)
 	method display x0 y0 width height focused =
 		Log.p "display %s from %d,%d, width=%d, height=%d" buf#name x0 y0 width height ;
+		last_height <- height ; last_width <- width ;
 		self#center_cursor_y height start_scroll_margin_y ;
 		let rec put_chr (x, xl, y, n) c =
 			(* x is the screen coordinate while xl is the number of advances (in screen positions)
@@ -163,47 +170,61 @@ object (self)
 			aux x y
 		with Exit -> ())
 
-	method beep = ()
+	method cursor_up =
+		(* FIXME: if on_first_line cursor then beep else
+		 *        offset = x_from_line_start etc...
+		 *        this function takes into account the width of chars (tab_width...) *)
+		let offset = from_line_start cursor.Buf.pos in
+		if offset = cursor.Buf.pos then raise Cannot_move ;
+		let prev_line_len = from_line_start (cursor.Buf.pos - offset - 1) in
+		cursor.Buf.pos <- cursor.Buf.pos - offset - 1 -
+			(if prev_line_len >= offset then prev_line_len - offset else 0)
+	
+	method cursor_down =
+		let offset = from_line_start cursor.Buf.pos in
+		let to_end = to_line_end cursor.Buf.pos in
+		if cursor.Buf.pos + to_end >= Rope.length buf#get - 1 then raise Cannot_move ;
+		let next_line_len = to_line_end (cursor.Buf.pos + to_end + 1) in
+		cursor.Buf.pos <- cursor.Buf.pos + to_end + 1 +
+			(if next_line_len >= offset then offset else next_line_len)
+	
+	method cursor_left =
+		if cursor.Buf.pos <= 0 then raise Cannot_move ;
+		cursor.Buf.pos <- cursor.Buf.pos - 1
+	
+	method cursor_right =
+		if cursor.Buf.pos >= Rope.length buf#get then raise Cannot_move ;
+		cursor.Buf.pos <- cursor.Buf.pos + 1
 
 	method key k =
 		Log.p "Got key %d" k ;
-		(* Handle cursor movement *)
-		if k = Term.Key.left then (
-			if cursor.Buf.pos <= 0 then self#beep
-			else cursor.Buf.pos <- cursor.Buf.pos - 1
-		) else if k = Term.Key.right then (
-			if cursor.Buf.pos >= Rope.length buf#get then self#beep
-			else cursor.Buf.pos <- cursor.Buf.pos + 1
-		) else if k = Term.Key.up then (
-			(* FIXME: if on_first_line cursor then beep else
-			 *        offset = x_from_line_start etc...
-			 *        this function takes into account the width of chars (tab_width...) *)
-			let offset = from_line_start cursor.Buf.pos in
-			if offset = cursor.Buf.pos then self#beep else (
-				let prev_line_len = from_line_start (cursor.Buf.pos - offset - 1) in
-				cursor.Buf.pos <- cursor.Buf.pos - offset - 1 -
-					(if prev_line_len >= offset then prev_line_len - offset else 0)
+		(try 
+			(* Handle cursor movement *)
+			if k = Term.Key.left then (
+				self#cursor_left
+			) else if k = Term.Key.right then (
+				self#cursor_right
+			) else if k = Term.Key.up then (
+				self#cursor_up
+			) else if k = Term.Key.down then (
+				self#cursor_down
+			) else if k = Term.Key.ppage then (
+				for i = 1 to last_height - 1 do self#cursor_up done
+			) else if k = Term.Key.npage then (
+				for i = 1 to last_height - 1 do self#cursor_down done
+			(* Handle deletion *)
+			) else if k = Term.Key.backspace then (
+				if cursor.Buf.pos == 0 then Term.beep ()
+				else buf#delete (cursor.Buf.pos-1) cursor.Buf.pos
+			) else if k = Term.Key.dc then (	(* delete *)
+				if cursor.Buf.pos == Rope.length buf#get then Term.beep ()
+				else buf#delete cursor.Buf.pos (cursor.Buf.pos + 1)
+			) else (
+				(* Other keys *)
+				let c = Term.char_of_key k in
+				buf#insert cursor.Buf.pos (Rope.singleton c)
 			)
-		) else if k = Term.Key.down then (
-			let offset = from_line_start cursor.Buf.pos in
-			let to_end = to_line_end cursor.Buf.pos in
-			if cursor.Buf.pos + to_end >= Rope.length buf#get - 1 then self#beep else (
-				let next_line_len = to_line_end (cursor.Buf.pos + to_end + 1) in
-				cursor.Buf.pos <- cursor.Buf.pos + to_end + 1 +
-					(if next_line_len >= offset then offset else next_line_len)
-			)
-		(* Handle deletion *)
-		) else if k = Term.Key.backspace then (
-			if cursor.Buf.pos == 0 then self#beep
-			else buf#delete (cursor.Buf.pos-1) cursor.Buf.pos
-		) else if k = Term.Key.dc then (	(* delete *)
-			if cursor.Buf.pos == Rope.length buf#get then self#beep
-			else buf#delete cursor.Buf.pos (cursor.Buf.pos + 1)
-		) else (
-			(* Other keys *)
-			let c = Term.char_of_key k in
-			buf#insert cursor.Buf.pos (Rope.singleton c)
-		)
+		with Cannot_move -> Term.beep ())
 
 end
 

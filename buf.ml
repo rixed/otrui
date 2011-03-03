@@ -45,6 +45,8 @@ object (self)
 		List.iter update_mark marks
 end
 
+(* REPL *)
+
 (* There's only one repl buffer *)
 let repl =
 	let prompt = Rope.of_string "# " in
@@ -80,7 +82,8 @@ object (self)
 				Toploop.parse_use_file := save ;
 				false
 				(*Toploop.print_exception_outcome self#formatter exn ;
-				false*) in
+				false*)
+		in
 		let ends_with e r =
 			let lr = Rope.length r in
 			let le = String.length e in
@@ -112,4 +115,28 @@ object (self)
 		if start >= prompt_stop || stop <= prompt_start then
 			parent#delete start stop
 end
+
+let fix_topdirs =
+	Log.p "Fixing toplevel directives so that they do not use stdout but repl_fmt" ;
+	(* Shadow the useful topdirs that use std_formatter with ones that use repl#formatter *)
+	let fmt = repl#formatter in
+	Hashtbl.add Toploop.directive_table "use" (Toploop.Directive_string (Topdirs.dir_use fmt)) ;
+	Hashtbl.add Toploop.directive_table "load" (Toploop.Directive_string (Topdirs.dir_load fmt)) ;
+	Hashtbl.add Toploop.directive_table "trace" (Toploop.Directive_ident (Topdirs.dir_trace fmt)) ;
+	Hashtbl.add Toploop.directive_table "untrace" (Toploop.Directive_ident (Topdirs.dir_untrace fmt)) ;
+	Hashtbl.add Toploop.directive_table "untrace_all" (Toploop.Directive_none (Topdirs.dir_untrace_all fmt)) ;
+(*	Hashtbl.add Toploop.directive_table "warnings" (Toploop.Directive_string (Topdirs.parse_warnings fmt false)) ;
+	Hashtbl.add Toploop.directive_table "warn_error" (Toploop.Directive_string (Topdirs.parse_warnings fmt true)) ; *)
+	Hashtbl.add Toploop.directive_table "install_printer" (Toploop.Directive_ident (Topdirs.dir_install_printer fmt)) ;
+	Hashtbl.add Toploop.directive_table "remove_printer" (Toploop.Directive_ident (Topdirs.dir_remove_printer fmt))
+
+let set_rec_types =
+	match Hashtbl.find Toploop.directive_table "rectypes" with
+		| Toploop.Directive_none f -> f () ;
+		| _ -> failwith "Cannot find rectypes toplevel directive"
+
+let init =
+	Toploop.set_paths () ;
+	Toploop.initialize_toplevel_env ()
+
 
