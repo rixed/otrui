@@ -2,7 +2,7 @@ OCAMLPATH = ..
 
 all: eval.byte otrui.byte system.cmo plugins/pipe.cmo
 
-OTRUI_SOURCES = log.ml term.ml buf.ml view.ml win.ml cmd.ml otrui.ml
+OTRUI_SOURCES = log.ml term.ml buf.ml repl.ml view.ml win.ml cmd.ml otrui.ml
 OTHER_SOURCES = system.ml plugins/pipe.ml
 ML_SOURCES = $(OTRUI_SOURCES) $(OTHER_SOURCES)
 

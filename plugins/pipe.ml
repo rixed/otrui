@@ -1,11 +1,11 @@
-open Bricabrac
-open Buf
-
 let doc = "This is a plugin for otrui that show how to implement a new kind of buffer.
 This one implements a pipe, ie. everything you type in this buffer is send as stdin
 to a program, and every output of the program is appended to the buffer."
 
-let _ = repl#append (Rope.of_string "Loading pipe buffer\n")
+open Bricabrac
+open Buf
+
+let _ = Repl.repl#append (Rope.of_string "Loading pipe buffer\n")
 
 class t program =
 	let prompt = Rope.of_string ">% "

@@ -110,7 +110,7 @@ let execute_single = function
 			let cmd = List.map char_of_int cmd in
 			let cmd = Rope.of_list cmd in
 			let cmd = Rope.to_string cmd in (* ouf! *)
-			Buf.repl#eval cmd
+			Repl.repl#eval cmd
 		with Invalid_argument _ ->
 			last_result := "Cannot exec this 'string'")
 	(* and '!' to send a command to a shell, opening a new shell view if none already opened ?

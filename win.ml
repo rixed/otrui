@@ -133,7 +133,7 @@ let display x0 y0 width height ((focused, _) as t) =
 	display_down x0 y0 width height focused alldown
 
 let root =
-	let root_view = new View.text ~append:true Buf.repl in
+	let root_view = new View.text ~append:true Repl.repl in
 	ref (Leaf (root_view :> View.t), NoExtend)
 
 let display_root status_left status_right =

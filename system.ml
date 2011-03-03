@@ -2,12 +2,12 @@ open Buf
 open Bricabrac
 
 let load_all_plugins dir =
-	Buf.repl#eval ("#directory \""^dir^"\"") ;
-	repl#append (Rope.of_string ("Loading plugins from "^dir^"...\n")) ;
+	Repl.repl#eval ("#directory \""^dir^"\"") ;
+	Repl.repl#append (Rope.of_string ("Loading plugins from "^dir^"...\n")) ;
 	let load_plugin name stat =
 		if stat.Unix.st_kind = Unix.S_REG then (
 			Log.p "Loading plugin %s" name ;
-			Buf.repl#eval ("#load \""^name^"\"")
+			Repl.repl#eval ("#load \""^name^"\"")
 		) in
 	foreach_file dir load_plugin
 
