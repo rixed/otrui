@@ -22,7 +22,8 @@ let string_of_view (_, kind, buf, is_mapped, is_focused) =
 
 (* Command parse and execute *)
 
-let last_result = ref ""
+exception Error of string
+let error str = raise (Error str)
 
 let c2i = int_of_char
 
@@ -44,35 +45,29 @@ let execute_single = function
 		(try
 			let way = way_of_key dir in
 			Win.move_focus_to way
-		with Not_found ->
-			last_result := "No window there")
+		with Not_found -> error "No window there")
 	| [ w ; npage ] when w = c2i 'w' && npage = Term.Key.npage ->
 		(try Win.deepen_focus ()
-		with Not_found ->
-			last_result := "No window down there")
+		with Not_found -> error "No window down there")
 	| [ w ; ppage ] when w = c2i 'w' && ppage = Term.Key.ppage ->
 		(try Win.widen_focus ()
-		with Not_found ->
-			last_result := "No window up there")
+		with Not_found -> error "No window up there")
 	(* change window size *)
 	| [ w ; a ; dir ] when w = c2i 'w' && (a = c2i '+' || a = c2i '-') && Term.is_direction dir ->
 		let way = way_of_key dir in
 		(try
 			let sz = if a = c2i '+' then 1 else ~-1 in
 			Win.resize_focus way sz
-		with Not_found ->
-			last_result := "Cannot resize in this direction")
+		with Not_found -> error "Cannot resize in this direction")
 	(* Exchange two windows *)
 	| [ w ; x ; dir ] when w = c2i 'w' && x = c2i 'x' && Term.is_direction dir ->
 		let way = way_of_key dir in
 		(try Win.exchange_focus way
-		with Not_found ->
-			last_result := "No other window in this direction")
+		with Not_found -> error "No other window in this direction")
 	(* Unmap the focused view *)
 	| [ w ; d ] when w = c2i 'w' && d = c2i 'd' ->
 		(try Win.delete_focus ()
-		with Not_found ->
-			last_result := "Cannot unmap everything")
+		with Not_found -> error "Cannot unmap everything")
 	(* Change the view of the focused window to the next one *)
 	| [ b ; n ] when b = c2i 'b' && n = c2i 'n' ->
 		(try
@@ -82,11 +77,8 @@ let execute_single = function
 				| [] -> assert take_next ; first
 				| (v, _, _, _, _) as vdescr :: rest ->
 					if take_next then vdescr else aux (Win.is_focused v) rest in
-			(match aux false views with (v, _, bufname, _, _) ->
-				Win.set_view v ;
-				last_result := Printf.sprintf "Viewing '%s'" bufname)
-		with Not_found ->
-			last_result := "Not a single views?")
+			match aux false views with (v, _, _, _, _) -> Win.set_view v
+		with Not_found -> error "Not a single views?")
 	(* Change the view of the focused window to the previous one *)
 	| [ b ; p ] when b = c2i 'b' && p = c2i 'p' ->
 		(try
@@ -95,15 +87,12 @@ let execute_single = function
 				| [] -> prev (* the first was focused *)
 				| (v, _, _, _, _) as vdescr :: rest ->
 					if Win.is_focused v then prev else aux vdescr rest in
-			(match aux (List.hd views) (List.tl views) with (v, _, bufname, _, _) ->
-				Win.set_view v ;
-				last_result := Printf.sprintf "Viewing '%s'" bufname)
-		with Not_found ->
-			last_result := "Not a single views?")
+			match aux (List.hd views) (List.tl views) with (v, _, _, _, _) -> Win.set_view v
+		with Not_found -> error "Not a single views?")
 	(* Split the current focused window *)
 	| [ w ; s ; dir ] when w = c2i 'w' && s = c2i 's' && Term.is_direction dir ->
 		(try Win.split_focus (way_of_key dir)
-		with _ -> last_result := "Cannot split?")
+		with _ -> error "Cannot split?")
 	(* send a command to the repl *)
 	| bang :: cmd when bang = c2i '#' ->
 		(try
@@ -111,8 +100,7 @@ let execute_single = function
 			let cmd = Rope.of_list cmd in
 			let cmd = Rope.to_string cmd in (* ouf! *)
 			Repl.repl#eval cmd
-		with Invalid_argument _ ->
-			last_result := "Cannot exec this 'string'")
+		with Invalid_argument _ -> error "Cannot exec this 'string'")
 	(* and '!' to send a command to a shell, opening a new shell view if none already opened ?
 	 * So we need the "pipe" buf *)
 	(* TODO? Non car le principe c'est qu'il soit possible de coder ce genre de fonctionnalité
@@ -121,11 +109,11 @@ let execute_single = function
 	 * de la win root depuis un fichier (s'il existe), et l'enregistrer au moment de quitter.
 	 * (il faudra alors penser à ajouter des hooks) *)
 	(* unrecognized command *)
-	| _ -> last_result := "Unknown command"
+	| _ -> error "Unknown command"
 
 let rec execute ?count = function
 	(* nop *)
-	| [] -> last_result := ""
+	| [] -> ()
 	(* repetition count *)
 	| c :: rest when c >= c2i '0' && c <= c2i '9' ->
 		execute ~count:((optdef count 0)*10 + c - (c2i '0')) rest
@@ -147,43 +135,48 @@ type mode = Command | Insert
 let mode = ref Insert
 let command = ref []
 let auto_insert = ref true	(* return in insert mode once command is executed *)
-let key_loop () =
-	Log.p "Loop for getch" ;
-	let next_key () =
-		let focused = try Some (Win.view_of !Win.root) with Not_found -> None in
-		if focused = None then mode := Command ;
-		let left = match !mode with
-			| Insert -> !last_result
-			| Command -> "Cmd: " ^ string_of_command !command
-		and right = match !mode with
-			| Insert -> "Insert"
-			| Command -> "Command" in
-		Win.display_root left right ;
-		let k = Term.key () in
-		if k = Term.ascii_escape then (
-			if focused <> None then (
-				mode := (match !mode with Command -> Insert | Insert -> Command) ;
-				last_result := "" ;
-				command := []
+
+let add_key k =
+	Log.p "Got key %d" k ;
+	let focused = try Some (Win.view_of !Win.root) with Not_found -> None in
+	if focused = None then mode := Command ;
+
+	if k = Term.ascii_escape then (
+		if focused <> None then (
+			mode := (match !mode with Command -> Insert | Insert -> Command) ;
+			command := []
+		)
+	) else (
+		match !mode with
+		| Insert -> (unopt focused)#key k
+		| Command ->
+			let do_exec =
+				if k = Term.ascii_return then true else
+				if k = Term.Key.backspace then (
+					if List.length !command > 0 then command := List.tl !command ;
+					false
+				) else (
+					command := k :: !command ;
+					k > 255
+				) in
+			if do_exec then (
+				let cmd = List.rev !command in
+				command := [] ;
+				if !auto_insert && focused <> None then mode := Insert ;
+				execute cmd
 			)
-		) else (
-			match !mode with
-			| Insert -> (unopt focused)#key k
-			| Command ->
-				let do_exec =
-					if k = Term.ascii_return then true else
-					if k = Term.Key.backspace then (
-						if List.length !command > 0 then command := List.tl !command ;
-						false
-					) else (
-						command := k :: !command ;
-						k > 255
-					) in
-				if do_exec then (
-					execute (List.rev !command) ;
-					command := [] ;
-					if !auto_insert && focused <> None then mode := Insert
-				)
-		) in
-	forever next_key ()
+	)
+
+let rec key_loop last_error =
+	let left = match !mode with
+		| Insert -> last_error
+		| Command -> "Cmd: " ^ string_of_command !command
+	and right = match !mode with
+		| Insert -> "Insert"
+		| Command -> "Command" in
+	Win.display_root left right ;
+
+	let k = Term.key () in
+	try add_key k ; key_loop ""
+	with Error str -> key_loop str
 

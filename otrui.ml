@@ -6,5 +6,5 @@ let start =
 	Repl.repl#eval ("#load \""^instdir^"/system.cmo\"") ;
 	Repl.repl#eval ("#use \""^(Unix.getenv "HOME")^".otrui.rc\"") ;
 	Repl.repl#eval "#use \"./.otrui.rc\"" ;
-	Cmd.key_loop ()
+	Cmd.key_loop ""
 
