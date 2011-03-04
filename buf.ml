@@ -24,16 +24,16 @@ object (self)
 		let mark = { pos = pos } in
 		marks <- mark :: marks ;
 		mark
-	
+
 	method unmark mark = marks <- List.filter ((!=) mark) marks
-		
+
 	method insert pos c =
 		content <- Rope.insert content pos c ;
 		let c_len = Rope.length c in
 		let offset_mark mark =
 			if mark.pos >= pos then mark.pos <- mark.pos + c_len in
 		List.iter offset_mark marks
-	
+
 	(* shortcut *)
 	method append c = self#insert (Rope.length content) c
 

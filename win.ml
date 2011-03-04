@@ -1,7 +1,7 @@
 open Bricabrac
 module Rope = Buf.Rope
 
-type split_dir = Horizontal | Vertical 
+type split_dir = Horizontal | Vertical
 let default_split_dir = Horizontal
 
 type way = Up | Down | Left | Right
@@ -55,7 +55,7 @@ let focused_status_color = ref (0, false)
 let vert_split_color     = ref (0, false)
 
 let display_global_status left right y width =
-	display_status left right !global_status_color 0 y width 
+	display_status left right !global_status_color 0 y width
 
 let display_with_status view x0 y0 width height is_focused =
 	assert (height >= 1) ;

@@ -25,7 +25,7 @@ object (self)
 			let pos = resp_end.pos + 1 - (Rope.length prompt) in
 			parent#insert pos line in
 		forever aux ()
-	
+
 	initializer
 		resp_end <- parent#mark (Rope.length prompt -1) ;
 		Gc.finalise (fun _ -> ignore (Unix.close_process_full (ch_in, ch_out, ch_err))) self ;
@@ -54,7 +54,7 @@ object (self)
 			flush ch_out ;
 			self#append_prompt
 		)
-	
+
 	(* Disallow to delete the last prompt *)
 	method delete start stop =
 		let prompt_stop = resp_end.pos + 1 in

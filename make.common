@@ -34,9 +34,12 @@ ML_XOBJS = $(ML_SOURCES:.ml=.cmx)
 	$(OCAMLOPT) -o $@ -package "$(REQUIRES)" -linkpkg $(OCAMLOPTFLAGS) $^
 
 # Clean up
-.PHONY: clean clean-spec
+.PHONY: clean clean-spec clear
 clean: clean-spec
 	rm -f *.cm[ioxa] *.cmxa *.a *.s *.o *.byte *.opt .depend
+
+clear:
+	find $(top_srcdir) -type f -\( -name '*.c' -o -name '*.h' -o -name '*.ml' -\) | xargs sed -i -e 's/[ \t]\+$$//'
 
 # Dependencies
 .depend: $(ML_SOURCES) $(C_SOURCES)

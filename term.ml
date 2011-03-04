@@ -72,7 +72,7 @@ let palette_reset () =
 let redisplay () =
 	chk (refresh ())
 (*	palette_reset ()*)
-	
+
 let ascii_escape = 27
 let ascii_return = 13
 

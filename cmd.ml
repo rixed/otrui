@@ -10,7 +10,7 @@ let views () =
 		| txt :: rest ->
 			let buf = txt#get_buf#name in
 			let is_mapped = Win.is_mapped (txt:>View.t) in
-			let is_focused = Win.is_focused (txt:>View.t) in	
+			let is_focused = Win.is_focused (txt:>View.t) in
 			let descr = (txt :> View.t), "text", buf, is_mapped, is_focused in
 			show_texts (descr :: prevs) rest in
 	show_texts [] !View.text_views

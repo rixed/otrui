@@ -55,7 +55,7 @@ object (self)
 			let _status = top_eval cmd in
 			self#append_prompt
 		)
-	
+
 	method eval str =
 		(* First, append a prompt and moves the cmd start pointer here *)
 		self#append_prompt ;
