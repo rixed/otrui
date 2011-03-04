@@ -68,17 +68,66 @@ object (self)
 
 	initializer
 		text_views := (self :> text) :: !text_views ;
-		(* Remove ourself from text_views and our marks from buffer when we die *)
+		(* Remove our marks from buffer when we die (which won't happen until we get
+		 * removed from !text_views *)
 		Gc.finalise (fun _ ->
 			buf#unmark cursor ;
-			buf#unmark pos_first_line ;
-			text_views := List.filter (fun o -> o <> (self :> text)) !text_views) self
+			buf#unmark pos_first_line) self
 
 	method get_buf = (buf :> Buf.t)
 
 	method set_wrap w = wrap_lines <- w
 
 	method set_tab_width n = tab_width <- n
+
+	method move_up mark =
+		let offset = from_line_start mark.Buf.pos in
+		if offset = mark.Buf.pos then raise Cannot_move ;
+		let prev_line_len = from_line_start (mark.Buf.pos - offset - 1) in
+		mark.Buf.pos <- mark.Buf.pos - offset - 1 -
+			(if prev_line_len >= offset then prev_line_len - offset else 0)
+
+	method move_down mark =
+		let offset = from_line_start mark.Buf.pos in
+		let to_end = to_line_end mark.Buf.pos in
+		if mark.Buf.pos + to_end >= Rope.length buf#get - 1 then raise Cannot_move ;
+		let next_line_len = to_line_end (mark.Buf.pos + to_end + 1) in
+		mark.Buf.pos <- mark.Buf.pos + to_end + 1 +
+			(if next_line_len >= offset then offset else next_line_len)
+
+	method move_left mark =
+		if mark.Buf.pos <= 0 then raise Cannot_move ;
+		mark.Buf.pos <- mark.Buf.pos - 1
+
+	method move_right mark =
+		if mark.Buf.pos >= Rope.length buf#get then raise Cannot_move ;
+		mark.Buf.pos <- mark.Buf.pos + 1
+
+	method move_page_up mark = for i = 1 to last_height - 1 do self#move_up mark done
+	method move_page_down mark = for i = 1 to last_height - 1 do self#move_down mark done
+
+	method move_to_line_start mark =
+		let disp = from_line_start mark.Buf.pos in
+		mark.Buf.pos <- mark.Buf.pos - disp
+
+	method move_to_line_end mark =
+		let disp = to_line_end mark.Buf.pos in
+		mark.Buf.pos <- mark.Buf.pos + disp
+
+	method move_to_start mark = mark.Buf.pos <- 0
+	method move_to_end   mark = mark.Buf.pos <- Rope.length buf#get
+
+	method insert_char_of_key k mark =
+		let c = Term.char_of_key k in
+		buf#insert mark.Buf.pos (Rope.singleton c)
+
+	method backspace mark =
+		if mark.Buf.pos == 0 then raise Cannot_move ;
+		buf#delete (mark.Buf.pos-1) mark.Buf.pos
+
+	method delete mark =
+		if mark.Buf.pos == Rope.length buf#get then raise Cannot_move ;
+		buf#delete mark.Buf.pos (mark.Buf.pos + 1)
 
 	(* Reset starting position of display according to start_scroll_margin_y *)
 	method center_cursor_y height margin =
@@ -88,9 +137,7 @@ object (self)
 			let cursor_y = nb_lines_between pos_first_line.Buf.pos cursor.Buf.pos in
 			cursor_y < margin && pos_first_line.Buf.pos > 0
 		do
-			pos_first_line.Buf.pos <-
-				let prev_line_len = from_line_start (pos_first_line.Buf.pos-1) in
-				pos_first_line.Buf.pos - 1 - prev_line_len
+			self#move_up pos_first_line
 		done ;
 		assert (pos_first_line.Buf.pos <= cursor.Buf.pos) ;
 		(* scroll down *)
@@ -98,8 +145,7 @@ object (self)
 			let cursor_y' = height - 1 - nb_lines_between pos_first_line.Buf.pos cursor.Buf.pos in
 			cursor_y' < margin && more_lines_than height pos_first_line.Buf.pos
 		do
-			pos_first_line.Buf.pos <-
-				pos_first_line.Buf.pos + to_line_end pos_first_line.Buf.pos + 1
+			self#move_down pos_first_line
 		done
 
 	method content_descr = buf#name
@@ -169,55 +215,6 @@ object (self)
 			Term.set_color no_content_color ;
 			aux x y
 		with Exit -> ())
-
-	method move_up mark =
-		let offset = from_line_start mark.Buf.pos in
-		if offset = mark.Buf.pos then raise Cannot_move ;
-		let prev_line_len = from_line_start (mark.Buf.pos - offset - 1) in
-		mark.Buf.pos <- mark.Buf.pos - offset - 1 -
-			(if prev_line_len >= offset then prev_line_len - offset else 0)
-	
-	method move_down mark =
-		let offset = from_line_start mark.Buf.pos in
-		let to_end = to_line_end mark.Buf.pos in
-		if mark.Buf.pos + to_end >= Rope.length buf#get - 1 then raise Cannot_move ;
-		let next_line_len = to_line_end (mark.Buf.pos + to_end + 1) in
-		mark.Buf.pos <- mark.Buf.pos + to_end + 1 +
-			(if next_line_len >= offset then offset else next_line_len)
-	
-	method move_left mark =
-		if mark.Buf.pos <= 0 then raise Cannot_move ;
-		mark.Buf.pos <- mark.Buf.pos - 1
-	
-	method move_right mark =
-		if mark.Buf.pos >= Rope.length buf#get then raise Cannot_move ;
-		mark.Buf.pos <- mark.Buf.pos + 1
-	
-	method move_page_up mark = for i = 1 to last_height - 1 do self#move_up mark done
-	method move_page_down mark = for i = 1 to last_height - 1 do self#move_down mark done
-
-	method move_to_line_start mark =
-		let disp = from_line_start mark.Buf.pos in
-		mark.Buf.pos <- mark.Buf.pos - disp
-
-	method move_to_line_end mark =
-		let disp = to_line_end mark.Buf.pos in
-		mark.Buf.pos <- mark.Buf.pos + disp
-	
-	method move_to_start mark = mark.Buf.pos <- 0
-	method move_to_end   mark = mark.Buf.pos <- Rope.length buf#get
-
-	method insert_char_of_key k mark =
-		let c = Term.char_of_key k in
-		buf#insert mark.Buf.pos (Rope.singleton c)
-	
-	method backspace mark =
-		if mark.Buf.pos == 0 then raise Cannot_move ;
-		buf#delete (mark.Buf.pos-1) mark.Buf.pos
-
-	method delete mark =
-		if mark.Buf.pos == Rope.length buf#get then raise Cannot_move ;
-		buf#delete mark.Buf.pos (mark.Buf.pos + 1)
 
 	val key_bindings = Hashtbl.create 11
 	initializer
