@@ -93,3 +93,19 @@ let set_rec_types =
 let init =
 	Toploop.set_paths () ;
 	Toploop.initialize_toplevel_env ()
+
+let install_repl_commands =
+	let c2i = Cmd.c2i
+	and prev_execute = !Cmd.execute in
+	Cmd.execute := function
+	(* send a command to the repl *)
+	| bang :: cmd when bang = c2i '#' ->
+		(try
+			let cmd = List.map char_of_int cmd in
+			let cmd = Rope.of_list cmd in
+			let cmd = Rope.to_string cmd in (* ouf! *)
+			repl#eval cmd
+		with Invalid_argument _ -> Cmd.error "Cannot exec this 'string'")
+	(* unknown command *)
+	| x -> prev_execute x
+
