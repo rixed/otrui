@@ -1,4 +1,5 @@
 open Bricabrac
+module Rope = Buf.Rope
 
 (* Command parse and execute *)
 
@@ -25,4 +26,9 @@ let rec execute_times ?count = function
 		execute_times ~count:((optdef count 0)*10 + c - (c2i '0')) rest
 	| cmd ->
 		for c = 1 to (optdef count 1) do !execute cmd done
+
+let string_of_command cmd =
+	let cmd = List.map char_of_int cmd in
+	let cmd = Rope.of_list cmd in
+	Rope.to_string cmd
 

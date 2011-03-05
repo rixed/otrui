@@ -99,13 +99,11 @@ let install_repl_commands =
 	and prev_execute = !Cmd.execute in
 	Cmd.execute := function
 	(* send a command to the repl *)
-	| bang :: cmd when bang = c2i '#' ->
+	| dash :: cmd when dash = c2i '#' ->
 		(try
-			let cmd = List.map char_of_int cmd in
-			let cmd = Rope.of_list cmd in
-			let cmd = Rope.to_string cmd in (* ouf! *)
+			let cmd = Cmd.string_of_command cmd in
 			repl#eval cmd
-		with Invalid_argument _ -> Cmd.error "Cannot exec this 'string'")
+		with Invalid_argument _ -> Cmd.error "Cannot evaluate this 'string'")
 	(* unknown command *)
 	| x -> prev_execute x
 

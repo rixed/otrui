@@ -64,6 +64,13 @@ object (self)
 				Cmd.error str
 		)
 
+	method eval str =
+		(* First, append a prompt and moves the cmd start pointer here *)
+		self#append_prompt ;
+		(* Then append the cmd (with proper termination) *)
+		self#append (Rope.of_string str) ;
+		self#append (Rope.singleton '\n')
+
 	(* Disallow to delete the last prompt *)
 	method delete start stop =
 		let prompt_stop = resp_end.pos + 1 in
@@ -77,4 +84,16 @@ end
 
 let shell = new t "/bin/sh"
 let _ = new View.text ~append:true shell
+let install_shell_commands =
+	let c2i = Cmd.c2i
+	and prev_execute = !Cmd.execute in
+	Cmd.execute := function
+	(* send a command to the shell *)
+	| bang :: cmd when bang = c2i '!' ->
+		(try
+			let cmd = Cmd.string_of_command cmd in
+			shell#eval cmd
+		with Invalid_argument _ -> Cmd.error "Cannot execute this 'string'")
+	(* unknown command *)
+	| x -> prev_execute x
 

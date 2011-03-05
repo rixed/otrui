@@ -1,17 +1,6 @@
 open Bricabrac
 module Rope = Buf.Rope
 
-let string_of_command command =
-	let len = List.length command in
-	let str = String.create len in
-	let rec aux i cmds =
-		if i >= 0 then (
-			str.[i] <- (try char_of_int (List.hd cmds) with Invalid_argument _ -> '?') ;
-			aux (i-1) (List.tl cmds)
-		) in
-	aux (len-1) command ;
-	str
-
 type mode = Command | Insert
 let mode = ref Insert
 let command = ref []
@@ -51,7 +40,7 @@ let add_key k =
 let rec key_loop last_error =
 	let left = match !mode with
 		| Insert -> last_error
-		| Command -> "Cmd: " ^ string_of_command !command
+		| Command -> "Cmd: " ^ Cmd.string_of_command (List.rev !command)
 	and right = match !mode with
 		| Insert -> "Insert"
 		| Command -> "Command" in
