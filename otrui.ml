@@ -47,8 +47,10 @@ let rec key_loop last_error =
 	Win.display_root left right ;
 
 	let k = Term.key () in
-	try add_key k ; key_loop ""
-	with Cmd.Error str -> key_loop str
+	let next_error =
+		try add_key k ; ""
+		with Cmd.Error str -> str in
+	key_loop next_error
 
 let start =
 	let instdir = Sys.getcwd () in

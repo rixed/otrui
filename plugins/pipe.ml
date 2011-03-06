@@ -5,7 +5,7 @@ to a program, and every output of the program is appended to the buffer."
 open Bricabrac
 open Buf
 
-let _ = Repl.repl#append (Rope.of_string "Loading pipe buffer\n")
+let _ = Buf.append Repl.repl (Rope.of_string "Loading pipe buffer\n")
 
 let ignore_sig_child = Sys.set_signal Sys.sigpipe Sys.Signal_ignore
 
@@ -18,14 +18,16 @@ object (self)
 
 	val mutable resp_end = { pos = 0 }
 	val mutable reader_threads = []
+	val mutex = Mutex.create ()
 
 	method reader ch =
 		let aux () =
 			let line = input_line ch in
 			Log.p "Receiving string '%s' from program '%s'" line program ;
 			let line = Rope.cat (Rope.of_string line) (Rope.singleton '\n') in
-			let pos = resp_end.pos + 1 - (Rope.length prompt) in
-			parent#insert pos line in
+			with_mutex mutex (fun () ->
+				let pos = resp_end.pos + 1 - (Rope.length prompt) in
+				parent#insert pos line) () in
 		try forever aux ()
 		with End_of_file ->
 			Log.p "program '%s' exited" program
@@ -37,13 +39,15 @@ object (self)
 			Thread.create self#reader ch_in ;
 			Thread.create self#reader ch_err ]
 
+	(* Caller must own mutex *)
 	method append_prompt =
-		if resp_end.pos < (Rope.length content) -1 then (
-			parent#append prompt ;
+		let len = Rope.length content in
+		if resp_end.pos < len -1 then (
+			parent#insert len prompt ;
 			resp_end.pos <- (Rope.length content) -1
 		)
 
-	method insert pos c =
+	method insert_locked pos c =
 		let appending = pos = Rope.length content in
 		parent#insert pos c ;
 		if
@@ -59,24 +63,26 @@ object (self)
 			try
 				output_string ch_out input ;
 				flush ch_out ;
-				self#append_prompt
+				self#append_prompt ;
 			with Sys_error str ->
 				Cmd.error str
 		)
 
+	method insert pos c = with_mutex mutex (self#insert_locked pos) c
+
 	method eval str =
-		(* First, append a prompt and moves the cmd start pointer here *)
-		self#append_prompt ;
-		(* Then append the cmd (with proper termination) *)
-		self#append (Rope.of_string str) ;
-		self#append (Rope.singleton '\n')
+		with_mutex mutex (fun () ->
+			self#append_prompt ;
+			let cmd = Rope.cat (Rope.of_string str) (Rope.singleton '\n') in
+			self#insert_locked (Rope.length content) cmd) ()
 
 	(* Disallow to delete the last prompt *)
 	method delete start stop =
-		let prompt_stop = resp_end.pos + 1 in
-		let prompt_start = prompt_stop - (Rope.length prompt) in
-		if start >= prompt_stop || stop <= prompt_start then
-			parent#delete start stop
+		with_mutex mutex (fun () ->
+			let prompt_stop = resp_end.pos + 1 in
+			let prompt_start = prompt_stop - (Rope.length prompt) in
+			if start >= prompt_stop || stop <= prompt_start then
+				parent#delete start stop) ()
 
 end
 

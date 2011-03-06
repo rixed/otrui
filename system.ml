@@ -3,7 +3,7 @@ open Bricabrac
 
 let load_all_plugins dir =
 	Repl.repl#eval ("#directory \""^dir^"\"") ;
-	Repl.repl#append (Rope.of_string ("Loading plugins from "^dir^"...\n")) ;
+	Buf.append Repl.repl (Rope.of_string ("Loading plugins from "^dir^"...\n")) ;
 	let load_plugin name stat =
 		if stat.Unix.st_kind = Unix.S_REG then (
 			Log.p "Loading plugin %s" name ;

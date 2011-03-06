@@ -14,12 +14,15 @@ object (self)
 		resp_end <- parent#mark (Rope.length prompt -1)
 
 	method formatter =
-		let out str i l = parent#append (Rope.of_func l (fun j -> str.[i+j])) in
+		let out str i l =
+			let len = Rope.length content in
+			parent#insert len (Rope.of_func l (fun j -> str.[i+j])) in
 		Format.make_formatter out nop
 
 	method append_prompt =
-		if resp_end.pos < (Rope.length content) -1 then (
-			parent#append prompt ;
+		let len = Rope.length content in
+		if resp_end.pos < len -1 then (
+			parent#insert len prompt ;
 			resp_end.pos <- (Rope.length content) -1
 		)
 
@@ -60,8 +63,8 @@ object (self)
 		(* First, append a prompt and moves the cmd start pointer here *)
 		self#append_prompt ;
 		(* Then append the cmd (with proper termination) *)
-		self#append (Rope.of_string str) ;
-		self#append (Rope.of_string ";;\n")
+		Buf.append self (Rope.of_string str) ;
+		Buf.append self (Rope.of_string ";;\n")
 
 	(* Disallow to delete the last prompt *)
 	method delete start stop =

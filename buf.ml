@@ -12,7 +12,7 @@ end
 type mark = { mutable pos: int }
 
 class text init_content name =
-object (self)
+object
 	inherit t
 	val mutable content = init_content
 	method get = content
@@ -34,9 +34,6 @@ object (self)
 			if mark.pos >= pos then mark.pos <- mark.pos + c_len in
 		List.iter offset_mark marks
 
-	(* shortcut *)
-	method append c = self#insert (Rope.length content) c
-
 	method delete start stop =
 		assert (stop >= start) ;
 		content <- Rope.cut content start stop ;
@@ -45,4 +42,8 @@ object (self)
 			else if mark.pos >= start then mark.pos <- start in
 		List.iter update_mark marks
 end
+
+(* helpers *)
+
+let append o c = o#insert (Rope.length o#get) c
 

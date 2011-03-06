@@ -1,4 +1,4 @@
 open Buf;;
 
-Repl.repl#append (Rope.of_string "Loading preference file...\n");;
+Buf.append Repl.repl (Rope.of_string "Loading preference file...\n");;
 
