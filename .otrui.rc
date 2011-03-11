@@ -1,4 +1,4 @@
-open Buf;;
+open Editor;;
 
-Buf.append Repl.repl (Rope.of_string "Loading preference file...\n");;
+Repl_buf.append repl (Repl_buf.Rope.of_string "Loading local preference file...\n");;
 

@@ -2,7 +2,15 @@ OCAMLPATH = ..
 
 all: eval.byte otrui.byte system.cmo plugins/pipe.cmo
 
-OTRUI_SOURCES = log.ml term.ml buf.ml cmd.ml repl.ml view.ml win.ml otrui.ml
+OTRUI_SOURCES = \
+	otrui.ml log.ml \
+	term_curses.ml term_impl.ml \
+	cmd_impl.ml \
+	buf_rope.ml buf_impl.ml buf_repl.ml \
+	view_impl.ml view_text.ml \
+	win_impl.ml \
+	editor.ml main.ml
+
 OTHER_SOURCES = system.ml plugins/pipe.ml
 ML_SOURCES = $(OTRUI_SOURCES) $(OTHER_SOURCES)
 
@@ -26,6 +34,6 @@ otrui: otrui.cma
 	$(OCAMLMKTOP)  -o $@ -package "$(REQUIRES)" -g -custom $^
 
 clean-spec:
-	@rm -f otrui otrui.log
+	rm -f otrui otrui.log plugins/pipe.cm[ioxa]
 
 -include .depend

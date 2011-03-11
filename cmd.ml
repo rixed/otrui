@@ -1,34 +1,16 @@
-open Bricabrac
-module Rope = Buf.Rope
+exception Unknown         (* When a command is destined to somebody else *)
+exception Error of string (* When a command execution fails (error string is displayed) *)
 
-(* Command parse and execute *)
-
-exception Error of string
 let error str = raise (Error str)
 
 let c2i = int_of_char
 
-let default_commands = function
-	(* quit *)
-	| [ q ] when q = c2i 'q' ->
-		Log.p "Quit" ;
-		Term.quit () ; exit 0
-	(* unrecognized command *)
-	| _ -> error "Unknown command"
-
-let execute = ref (default_commands : int list -> unit)
-
-let rec execute_times ?count = function
-	(* nop *)
-	| [] -> ()
-	(* repetition count *)
-	| c :: rest when c >= c2i '0' && c <= c2i '9' ->
-		execute_times ~count:((optdef count 0)*10 + c - (c2i '0')) rest
-	| cmd ->
-		for c = 1 to (optdef count 1) do !execute cmd done
-
 let string_of_command cmd =
-	let cmd = List.map char_of_int cmd in
-	let cmd = Rope.of_list cmd in
-	Rope.to_string cmd
+	let len = List.length cmd in
+	let str = String.create len in
+	let rec aux i = function [] -> str | c::cmd -> str.[i] <- char_of_int c ; aux (i-1) cmd in
+	aux (len-1) cmd
+
+type execute_fun = int list -> unit
+let execute = ref ((fun _ -> error "Unknown command") : execute_fun)
 

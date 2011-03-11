@@ -1,61 +1,168 @@
-open Bricabrac
-module Rope = Buf.Rope
+type key = int
 
-type mode = Command | Insert
-let mode = ref Insert
-let command = ref []
-let auto_insert = ref true	(* return in insert mode once command is executed *)
+module type KEY =
+sig
+	val left      : key
+	val right     : key
+	val up        : key
+	val down      : key
+	val ppage     : key
+	val npage     : key
+	val backspace : key
+	val delete    : key
+	val escape    : key
+	val return    : key
 
-let add_key k =
-	Log.p "Got key %d" k ;
-	let focused = try Some (Win.view_of !Win.root) with Not_found -> None in
-	if focused = None then mode := Command ;
+	val get : unit -> key
+	(* [get ()] returns the next pressed key code *)
 
-	if k = Term.ascii_escape then (
-		if focused <> None then (
-			mode := (match !mode with Command -> Insert | Insert -> Command) ;
-			command := []
-		)
-	) else (
-		match !mode with
-		| Insert -> (unopt focused)#key k
-		| Command ->
-			let do_exec =
-				if k = Term.ascii_return then true else
-				if k = Term.Key.backspace then (
-					if List.length !command > 0 then command := List.tl !command ;
-					false
-				) else (
-					command := k :: !command ;
-					k > 255
-				) in
-			if do_exec then (
-				let cmd = List.rev !command in
-				command := [] ;
-				if !auto_insert && focused <> None then mode := Insert ;
-				Cmd.execute_times cmd
-			)
-	)
+	val to_char : key -> char
+	val to_int  : key -> int
+	val of_int  : int -> key
+end
 
-let rec key_loop last_error =
-	let left = match !mode with
-		| Insert -> last_error
-		| Command -> "Cmd: " ^ Cmd.string_of_command (List.rev !command)
-	and right = match !mode with
-		| Insert -> "Insert"
-		| Command -> "Command" in
-	Win.display_root left right ;
+module type TERM_BASE =
+sig
+	module Key : KEY
 
-	let k = Term.key () in
-	let next_error =
-		try add_key k ; ""
-		with Cmd.Error str -> str in
-	key_loop next_error
+	val print : int -> int -> int -> unit
+	(** [print x y c] prints the char c at location x,y *)
 
-let start =
-	let instdir = Sys.getcwd () in
-	Repl.repl#eval ("#load \""^instdir^"/system.cmo\"") ;
-	Repl.repl#eval ("#use \""^(Unix.getenv "HOME")^".otrui.rc\"") ;
-	Repl.repl#eval "#use \"./.otrui.rc\"" ;
-	key_loop ""
+	val hline : int
+	val vline : int
 
+	type color_pair = int * bool
+
+	val get_color : int * int * int -> int * int * int -> color_pair
+	(* [get_color (fg_r, fg_g, fg_b) (bg_r, bg_g, bg_b)] returns the color pair of the described
+	 * color *)
+	
+	val reverse : color_pair -> color_pair
+
+	val set_color : color_pair -> unit
+	(* [set_color p] set the color pair p (ie next print will use this color pair) *)
+	
+	val redraw : unit -> unit
+
+	val screen_size : unit -> int * int
+
+	val beep : unit -> unit
+
+	val quit : unit -> unit
+end
+
+module type TERM =
+sig
+	include TERM_BASE
+
+	val print_string : int -> int -> string -> unit
+	(** [print_string x y str] prints the string str at location x,y, clipping in x as necessary *)
+end
+
+
+module type CMD =
+sig
+	(* FIXME: an abstract type t to replace the int list ? *)
+	module Term : TERM
+	exception Unknown         (* When a command is destined to somebody else *)
+	exception Error of string (* When a command execution fails (error string is displayed) *)
+	val error : string -> unit
+
+	val c2i : char -> int
+	val string_of_command : key list -> string
+
+	type execute_fun = key list -> unit
+	val execute : execute_fun ref
+end
+
+
+module type BUF_BASE =
+sig
+	module Rope : Pfds_intf.ROPE_GEN
+
+	type t
+	type mark
+
+	val create  : string -> char Rope.t -> t
+	(* [create name content] creates the named buf with given initial content *)
+	val name    : t -> string
+	val content : t -> char Rope.t
+	val mark    : t -> int -> mark
+	val unmark  : t -> mark -> unit
+	val pos     : mark -> int
+	val set_pos : mark -> int -> unit
+
+	val insert  : t -> int -> char Rope.t -> unit
+	val cut     : t -> int -> int -> unit
+
+	val execute : t -> int list -> unit
+	(* [execute t cmd] executes the cmd on t or raise Cmd.Unknown *)
+end
+
+module type BUF =
+sig
+	include BUF_BASE
+
+	val append_string : t -> string -> unit
+	val append        : t -> char Rope.t -> unit
+	val length        : t -> int
+end
+
+
+module type WIN =
+sig
+	type split_dir = Horizontal | Vertical
+	type way = Up | Down | Left | Right
+	type 'a t
+
+	val singleton : 'a -> 'a t
+	val root      : 'a t -> 'a option
+	val set_root  : 'a t -> 'a -> 'a t
+	val widen     : 'a t -> 'a t
+	val deepen    : 'a t -> 'a t
+	val to_leaf   : 'a t -> 'a t
+
+	val exists    : ('a -> bool) -> 'a t -> bool
+	val split     : way -> 'a t -> 'a -> 'a t
+	val delete    : 'a t -> 'a t
+	(* [delete t] deletes the whole focused tree
+	 * or raise Not_found if this would delete the whole t *)
+	val focus_to  : way -> 'a t -> 'a t
+	val resize    : way -> int -> 'a t -> 'a t
+	val exchange  : way -> 'a t -> 'a t
+
+	val iter      : (int -> int -> int -> int -> bool -> 'a -> unit) ->
+	                int -> int -> int -> int -> 'a t -> unit
+end
+
+module type VIEW_BASE =
+sig
+	module Term : TERM
+	type t
+
+	val draw : t -> int -> int -> int -> int -> bool -> unit
+	(* [draw x0 y0 width height focused] redraw the view *)
+
+	val key : t -> key -> unit
+	(* [key t k] enter key k into view t *)
+
+	val execute : t -> int list -> unit
+	(* [execute t cmd] executes the cmd on t or raise Cmd.Unknown *)
+
+	val content_descr : t -> string
+	val content_status : t -> string
+end
+
+type view =
+	{ draw    : int -> int -> int -> int -> bool -> unit ;
+	  key     : key -> unit ;
+	  execute : int list -> unit ;
+	  descr   : unit -> string ;
+	  status  : unit -> string }
+
+module type VIEW =
+sig
+	include VIEW_BASE
+
+	val view : t -> view
+end
