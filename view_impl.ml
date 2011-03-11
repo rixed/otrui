@@ -6,10 +6,10 @@ module Make (View : VIEW_BASE) :
 struct
 	include View
 
-	let view t =
+	let view t name =
 		{ draw    = draw t ;
 		  key     = key t ;
 		  execute = execute t ;
-		  descr   = eta content_descr t ;
+		  descr   = (fun () -> name) ;
 		  status  = eta content_status t }
 end

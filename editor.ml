@@ -5,20 +5,19 @@ open Otrui
 
 module Term = Term_impl.Make (Term_curses.Make)
 module Cmd = Cmd_impl.Make (Term)
-module Rope_buf = Buf_impl.Make (Buf_rope.Make (Cmd))
+module Buf = Buf_impl.Make (Cmd)
+module Repl = Buf_repl.Make (Buf)
 
-module Repl = Buf_repl.Make (Rope_buf)
-module Repl_buf = Buf_impl.Make (Repl)
-
-module Repl_text_view = View_text.Make (Repl_buf) (Term) (Cmd)
+module Repl_text_view = View_text.Make (Repl) (Term) (Cmd)
 module Repl_view = View_impl.Make (Repl_text_view)
-module Rope_text_view = View_text.Make (Rope_buf) (Term) (Cmd)
+(* FIXME: replace by a true File_text_view, with the File buffer maps to a given file *)
+module Rope_text_view = View_text.Make (Buf) (Term) (Cmd)
 module Rope_view = View_impl.Make (Rope_text_view)
 
 (* At the beginning there was a REPL *)
 
 let repl =
-	let r = Repl_buf.create "REPL" (Repl_buf.Rope.empty) in
+	let r = Repl.create () in
 	Repl.grab_topdirs r ;
 	r
 
@@ -30,7 +29,7 @@ let repl_view = Repl_text_view.create ~append:true repl
 
 module Win = Win_impl.Make
 
-let win = ref (Win.singleton (Repl_view.view repl_view))
+let win = ref (Win.singleton (Repl_view.view repl_view "REPL"))
 
 (* Then welcome the set of named views that must be kept even when not in any window *)
 
@@ -57,9 +56,15 @@ let views () = hashtbl_keys kept_views
 
 (* Another test *)
 
-let rope_buf_of_file fname = Rope_buf.create fname (Rope_buf.Rope.of_file fname)
-let file_view = Rope_text_view.create (rope_buf_of_file "otrui.ml")
-let () = add_and_open_view "otrui.ml" (Rope_view.view file_view)
+let rope_buf_of_file fname =
+	let r = Buf.create () in
+	Buf.append r (Rope.of_file fname) ;
+	r
+let add_and_open_file fname =
+	let view = Rope_text_view.create (rope_buf_of_file fname) in
+	add_and_open_view fname (Rope_view.view view fname)
+
+let () = add_and_open_file "otrui.ml"
 
 (* And then the function to draw the window *)
 

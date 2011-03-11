@@ -76,36 +76,26 @@ sig
 end
 
 
-module type BUF_BASE =
-sig
-	module Rope : Pfds_intf.ROPE_GEN
+module Rope = Rope_impl.Make
 
+module type BUF =
+sig
 	type t
 	type mark
 
-	val create  : string -> char Rope.t -> t
-	(* [create name content] creates the named buf with given initial content *)
-	val name    : t -> string
 	val content : t -> char Rope.t
 	val mark    : t -> int -> mark
 	val unmark  : t -> mark -> unit
 	val pos     : mark -> int
 	val set_pos : mark -> int -> unit
-
 	val insert  : t -> int -> char Rope.t -> unit
 	val cut     : t -> int -> int -> unit
 
 	val execute : t -> int list -> unit
 	(* [execute t cmd] executes the cmd on t or raise Cmd.Unknown *)
-end
 
-module type BUF =
-sig
-	include BUF_BASE
-
-	val append_string : t -> string -> unit
-	val append        : t -> char Rope.t -> unit
-	val length        : t -> int
+	val length  : t -> int
+	val append  : t -> char Rope.t -> unit
 end
 
 
@@ -149,7 +139,6 @@ sig
 	val execute : t -> int list -> unit
 	(* [execute t cmd] executes the cmd on t or raise Cmd.Unknown *)
 
-	val content_descr : t -> string
 	val content_status : t -> string
 end
 
@@ -164,5 +153,5 @@ module type VIEW =
 sig
 	include VIEW_BASE
 
-	val view : t -> view
+	val view : t -> string -> view
 end

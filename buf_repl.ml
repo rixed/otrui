@@ -1,16 +1,19 @@
 open Bricabrac
 open Otrui
 
-module type BUF_REPL =
+module type S =
 sig
-	include BUF_BASE
-	val eval : t -> string -> unit
+	include BUF
+	module Buf : BUF
+	val create       : unit -> t
+	val eval         : t -> string -> unit
 	val grab_topdirs : t -> unit
 end
 
-module Make (Buf : BUF) : BUF_REPL =
+module Make (Buf : Buf_impl.S) :
+	S with module Buf = Buf and type mark = Buf.mark =
 struct
-	module Rope = Buf.Rope
+	module Buf = Buf
 
 	type mark = Buf.mark
 
@@ -20,18 +23,20 @@ struct
 
 	let prompt = Rope.of_string "# "
 	
-	let create name content =
-		let buf = Buf.create name (Rope.cat content prompt) in
+	let create () =
+		let buf = Buf.create () in
+		Buf.append buf prompt ;
 		{ buf      = buf ;
 		  resp_end = Buf.mark buf (Rope.length prompt -1) }
 
-	let name t    = Buf.name t.buf
 	let content t = Buf.content t.buf
 	let mark t    = Buf.mark t.buf
 	let unmark t  = Buf.unmark t.buf
 	let pos       = Buf.pos
 	let set_pos   = Buf.set_pos
 	let execute t = Buf.execute t.buf
+	let length t  = Buf.length t.buf
+	let append t  = Buf.append t.buf
 
 	let formatter t =
 		let out str i l =
@@ -39,10 +44,10 @@ struct
 		Format.make_formatter out nop
 
 	let append_prompt t =
-		let len = Buf.length t.buf in
+		let len = length t in
 		if pos t.resp_end < len -1 then (
 			Buf.append t.buf prompt ;
-			set_pos t.resp_end ((Buf.length t.buf) -1)
+			set_pos t.resp_end (length t -1)
 		)
 
 	(* Now redefine insert to evaluate commands *)
@@ -69,10 +74,10 @@ struct
 				let e' = Rope.to_string (Rope.sub r (lr-le) lr) in
 				e' = e
 			) else false in
-		let appending = p = Buf.length t.buf in
+		let appending = p = length t in
 		Buf.insert t.buf p c ;
 		if appending && ends_with ";;\n" (content t) then (
-			let cur_len = Buf.length t.buf in
+			let cur_len = length t in
 			Log.p "cur_len = %d while resp_end is at %d" cur_len (pos t.resp_end) ;
 			assert (pos t.resp_end < cur_len) ;
 			let cmd = Rope.sub (content t) ((pos t.resp_end) + 1) cur_len in
@@ -85,7 +90,7 @@ struct
 		append_prompt t ;
 		(* Then append the cmd (with proper termination) *)
 		Buf.append t.buf (Rope.of_string str) ;
-		insert t (Buf.length t.buf) (Rope.of_string ";;\n")
+		insert t (length t) (Rope.of_string ";;\n")
 
 	(* Disallow to delete the last prompt *)
 	let cut t start stop =

@@ -18,7 +18,6 @@ module Make (Buf : BUF) (Term : TERM) (Cmd : CMD with module Term = Term) :
 struct
 	module Term = Term
 	module Buf  = Buf
-	module Rope = Buf.Rope
 
 	type t =
 		{ buf                       : Buf.t ;
@@ -186,13 +185,12 @@ struct
 			move_down t t.pos_first_line
 		done
 
-	let content_descr t = Buf.name t.buf
 	let content_status t =
 		let len = Buf.length t.buf in
 		Printf.sprintf "%d chars" len
 
 	let draw t x0 y0 width height focused =
-		Log.p "display %s from %d,%d, width=%d, height=%d" (Buf.name t.buf) x0 y0 width height ;
+		Log.p "display from %d,%d, width=%d, height=%d" x0 y0 width height ;
 		t.last_height <- height ; t.last_width <- width ;
 		center_cursor_y t height t.scroll_margin_y ;
 		let rec put_chr (x, xl, y, n) c =

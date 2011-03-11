@@ -6,7 +6,7 @@ OTRUI_SOURCES = \
 	otrui.ml log.ml \
 	term_curses.ml term_impl.ml \
 	cmd_impl.ml \
-	buf_rope.ml buf_impl.ml buf_repl.ml \
+	buf_impl.ml buf_repl.ml \
 	view_impl.ml view_text.ml \
 	win_impl.ml \
 	editor.ml main.ml
