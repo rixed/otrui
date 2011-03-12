@@ -31,28 +31,28 @@ module Win = Win_impl.Make
 
 let win = ref (Win.singleton (Repl_view.view repl_view "REPL"))
 
-(* Then welcome the set of named views that must be kept even when not in any window *)
+(* Then the set of named views that must be kept even when not in any window *)
 
-let kept_views = Hashtbl.create 17
+let named_views = Hashtbl.create 17
 
 let add_view name view =
 	let rec uniq_name suffix =
 		let n = (if suffix > 1 then string_of_int suffix else "") ^ name in
-		if Hashtbl.mem kept_views n then uniq_name (suffix+1) else n in
+		if Hashtbl.mem named_views n then uniq_name (suffix+1) else n in
 	let n = uniq_name 1 in
-	Hashtbl.add kept_views n view
+	Hashtbl.add named_views n view
 
 let add_and_open_view name v =
 	add_view name v ;
 	win := Win.deepen (Win.split Win.Up !win v)
 
-let del_view name = Hashtbl.remove kept_views name
+let del_view name = Hashtbl.remove named_views name
 
-let get_view name = Hashtbl.find kept_views name
+let get_view name = Hashtbl.find named_views name
 
 (* Returns a list of all kept views *)
 let hashtbl_keys h = Hashtbl.fold (fun k _ l -> k::l) h []
-let views () = hashtbl_keys kept_views
+let views () = hashtbl_keys named_views
 
 (* Another test *)
 
@@ -97,11 +97,11 @@ let draw win status_left status_right =
 		let need_status = height > 1 && (descr <> "" || status <> "") in
 		let need_vert_split = !show_vert_split && width > 1 in
 		view.draw x0 y0 (if need_vert_split then width-1 else width) (if need_status then height-1 else height) is_focused ;
+		if need_vert_split then draw_vert_split (x0+width-1) y0 height ;
 		if need_status then (
 			let color = if is_focused then !focused_status_color else !win_status_color in
 			draw_status descr status color x0 (y0+height-1) width
-		) ;
-		if need_vert_split then draw_vert_split (width-1) y0 height in
+		) in
 	let width, height = Term.screen_size () in
 	if height > 1 then Win.iter draw_view 0 0 width (height-1) win ;
 	draw_status status_left status_right !global_status_color 0 (height-1) width ;
