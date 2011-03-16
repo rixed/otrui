@@ -4,50 +4,54 @@ open Otrui
 module type S =
 sig
 	include BUF
-	module Buf : BUF
 	val create       : unit -> t
 	val eval         : t -> string -> unit
 	val grab_topdirs : t -> unit
 end
 
-module Make (Buf : Buf_impl.S) :
-	S with module Buf = Buf and type mark = Buf.mark =
+(* We need a simple mark for our own use *)
+module MarkOffset = Mark_offset.Make
+module Mark = Mark_impl.Make (MarkOffset)
+
+module Make (Buf : Buf_impl.S) : S =
 struct
 	module Buf = Buf
 
-	type mark = Buf.mark
-
 	type t =
-		{ buf      : Buf.t ;
-		  resp_end : mark }
+		{ buf         : Buf.t ;
+		  prompt_mark : mark (* mark the position of the last prompt *) }
 
 	let prompt = Rope.of_string "# "
 	
 	let create () =
 		let buf = Buf.create () in
+		let prompt_mark = Mark.mark (MarkOffset.create ()) in
+		prompt_mark.to_end_of (Buf.content buf) ;
 		Buf.append buf prompt ;
-		{ buf      = buf ;
-		  resp_end = Buf.mark buf (Rope.length prompt -1) }
+		Buf.mark buf prompt_mark ;
+		let t = { buf = buf ; prompt_mark = prompt_mark } in
+		Gc.finalise (fun t -> Buf.unmark t.buf t.prompt_mark) t ;
+		t
 
 	let content t = Buf.content t.buf
 	let mark t    = Buf.mark t.buf
 	let unmark t  = Buf.unmark t.buf
-	let pos       = Buf.pos
-	let set_pos   = Buf.set_pos
 	let execute t = Buf.execute t.buf
 	let length t  = Buf.length t.buf
 	let append t  = Buf.append t.buf
 
 	let formatter t =
 		let out str i l =
-			Buf.append t.buf (Rope.of_func l (fun j -> str.[i+j])) in
+			append t (Rope.of_func l (fun j -> str.[i+j])) in
 		Format.make_formatter out nop
 
 	let append_prompt t =
 		let len = length t in
-		if pos t.resp_end < len -1 then (
-			Buf.append t.buf prompt ;
-			set_pos t.resp_end (length t -1)
+		if t.prompt_mark.pos () < len - (Rope.length prompt) then (
+			t.prompt_mark.to_end_of (content t) ;
+			unmark t t.prompt_mark ;
+			append t prompt ;
+			mark t t.prompt_mark
 		)
 
 	(* Now redefine insert to evaluate commands *)
@@ -78,24 +82,24 @@ struct
 		Buf.insert t.buf p c ;
 		if appending && ends_with ";;\n" (content t) then (
 			let cur_len = length t in
-			Log.p "cur_len = %d while resp_end is at %d" cur_len (pos t.resp_end) ;
-			assert (pos t.resp_end < cur_len) ;
-			let cmd = Rope.sub (content t) ((pos t.resp_end) + 1) cur_len in
+			Log.p "cur_len = %d while prompt_mark is at %d" cur_len (t.prompt_mark.pos ());
+			assert (t.prompt_mark.pos () < cur_len) ;
+			let cmd = Rope.sub (content t) (t.prompt_mark.pos () + Rope.length prompt) cur_len in
 			let _status = top_eval cmd in
 			append_prompt t
 		)
 
 	let eval t str =
-		(* First, append a prompt and moves the cmd start pointer here *)
+		(* First, append a prompt *)
 		append_prompt t ;
 		(* Then append the cmd (with proper termination) *)
-		Buf.append t.buf (Rope.of_string str) ;
+		append t (Rope.of_string str) ;
 		insert t (length t) (Rope.of_string ";;\n")
 
 	(* Disallow to delete the last prompt *)
 	let cut t start stop =
-		let prompt_stop = (pos t.resp_end) + 1 in
-		let prompt_start = prompt_stop - (Rope.length prompt) in
+		let prompt_start = t.prompt_mark.pos () in
+		let prompt_stop = prompt_start + Rope.length prompt in
 		if start >= prompt_stop || stop <= prompt_start then
 			Buf.cut t.buf start stop
 	

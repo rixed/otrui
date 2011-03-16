@@ -10,7 +10,7 @@ let _ = Repl.append repl (Rope.of_string "Loading pipe buffer\n")
 
 let ignore_sig_child = Sys.set_signal Sys.sigpipe Sys.Signal_ignore
 
-module type BUF_PIPE =
+module type S =
 sig
 	include BUF
 	module Buf : BUF
@@ -19,35 +19,37 @@ sig
 	val exec   : t -> string -> unit
 end
 
+(* We need a simple mark for our own use *)
+module MarkOffset = Mark_offset.Make
+module Mark = Mark_impl.Make (MarkOffset)
+
 module Make (Buf : Buf_impl.S) :
-	BUF_PIPE with module Buf = Buf and type mark = Buf.mark =
+	S with module Buf = Buf =
 struct
-	module Buf = Buf
-	
-	type mark = Buf.mark
+	module Buf  = Buf
 
 	type t =
-		{ buf            : Buf.t ;
-		  resp_end       : mark ;
-		  mutex          : Mutex.t ;
-		  ch_out         : out_channel ;
-		  prompt         : char Rope.t }
+		{ buf         : Buf.t ;
+		  prompt_mark : mark ;
+		  mutex       : Mutex.t ;
+		  ch_out      : out_channel ;
+		  prompt      : char Rope.t }
 
 	let content t = Buf.content t.buf
 	let mark t    = Buf.mark t.buf
 	let unmark t  = Buf.unmark t.buf
-	let pos       = Buf.pos
-	let set_pos   = Buf.set_pos
 	let execute t = Buf.execute t.buf
 	let append t  = Buf.append t.buf
 	let length t  = Buf.length t.buf
 
 	(* Caller must own mutex *)
 	let append_prompt t =
-		let len = Buf.length t.buf in
-		if pos t.resp_end < len -1 then (
-			Buf.append t.buf t.prompt ;
-			set_pos t.resp_end ((Buf.length t.buf) -1)
+		let len = length t in
+		if t.prompt_mark.pos () < len - (Rope.length t.prompt) then (
+			t.prompt_mark.to_end_of (content t) ;
+			unmark t t.prompt_mark ;
+			append t t.prompt ;
+			mark t t.prompt_mark
 		)
 
 	let create program prompt =
@@ -57,38 +59,41 @@ struct
 				Log.p "Receiving string '%s' from program" line ;
 				let line = Rope.cat (Rope.of_string line) (Rope.singleton '\n') in
 				with_mutex t.mutex (fun () ->
-					let pos = pos t.resp_end + 1 - (Rope.length t.prompt) in
+					let pos = t.prompt_mark.pos () + 1 - (Rope.length t.prompt) in
 					Buf.insert t.buf pos line) () in
 			try forever aux ()
 			with End_of_file ->
 				Log.p "program '%s' exited" program in
 		let env = Unix.environment () in
 		let ch_in, ch_out, ch_err = Unix.open_process_full program env in
-		let buf = Buf.create () in
-		Buf.append buf prompt ;
 		let t =
-			{ buf            = buf ;
-			  resp_end       = Buf.mark buf (Rope.length prompt -1) ;
-			  mutex          = Mutex.create () ;
-			  ch_out         = ch_out ;
-			  prompt         = prompt } in
+			{ buf         = Buf.create () ;
+			  prompt_mark = Mark.mark (MarkOffset.create ()) ;
+			  mutex       = Mutex.create () ;
+			  ch_out      = ch_out ;
+			  prompt      = prompt } in
+		t.prompt_mark.to_end_of (content t) ;
+		append t prompt ;
+		mark t t.prompt_mark ;
 		ignore (Thread.create (reader ch_in) t) ;
 		ignore (Thread.create (reader ch_err) t) ;
-		Gc.finalise (fun _ -> ignore (Unix.close_process_full (ch_in, ch_out, ch_err))) t ;
+		Gc.finalise (fun t ->
+			ignore (Unix.close_process_full (ch_in, ch_out, ch_err)) ;
+			unmark t t.prompt_mark) t ;
 		t
 
 	(* Now redefine insert to send to program stdin *)
 	let insert_locked t p c =
-		let appending = p = Buf.length t.buf in
+		let appending = p = length t in
 		Buf.insert t.buf p c ;
-		let cur_len = Buf.length t.buf in
+		let cur_len = length t in
 		if
 			appending &&
 			cur_len > 0 &&
 			Rope.nth (content t) (cur_len - 1) = '\n'
 		then (
-			assert (pos t.resp_end < cur_len) ;
-			let input = Rope.sub (content t) (pos t.resp_end + 1) cur_len in
+			assert (t.prompt_mark.pos () < cur_len) ;
+			let input = Rope.sub (content t) (t.prompt_mark.pos () + Rope.length t.prompt) cur_len in
 			let input = Rope.to_string input in
 			Log.p "Sending string '%s' to program" input ;
 			try
@@ -105,13 +110,13 @@ struct
 		with_mutex t.mutex (fun () ->
 			append_prompt t ;
 			let cmd = Rope.cat (Rope.of_string str) (Rope.singleton '\n') in
-			insert_locked t (Buf.length t.buf) cmd) ()
+			insert_locked t (length t) cmd) ()
 	
 	(* Disallow to delete the last prompt *)
 	let cut t start stop =
 		with_mutex t.mutex (fun () ->
-			let prompt_stop = pos t.resp_end + 1 in
-			let prompt_start = prompt_stop - (Rope.length t.prompt) in
+			let prompt_start = t.prompt_mark.pos () in
+			let prompt_stop = prompt_start + (Rope.length t.prompt) in
 			if start >= prompt_stop || stop <= prompt_start then
 				Buf.cut t.buf start stop) ()
 end

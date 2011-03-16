@@ -8,7 +8,7 @@ end
 
 module Make (Cmd : CMD) : S =
 struct
-	type mark = { mutable pos: int }
+
 	type t =
 		{ mutable content : char Rope.t ;
 		  mutable marks   : mark list }
@@ -19,32 +19,22 @@ struct
 
 	let content t = t.content
 
-	let mark t pos = 
-		let m = { pos = pos } in
-		t.marks <- m :: t.marks ;
-		m
+	let mark t m = 
+		t.marks <- m :: t.marks
 
-	let unmark t mark =
-		t.marks <- List.filter ((!=) mark) t.marks
-
-	let pos mark = mark.pos
-
-	let set_pos mark pos = mark.pos <- pos
+	let unmark t m =
+		t.marks <- List.filter ((!=) m) t.marks
 
 	let insert t pos c =
 		t.content <- Rope.insert t.content pos c ;
-		let c_len = Rope.length c in
-		let offset_mark mark =
-			if mark.pos >= pos then mark.pos <- mark.pos + c_len in
-		List.iter offset_mark t.marks
+		List.iter (fun m -> m.update_for_insert t.content pos c) t.marks
 	
 	let cut t start stop =
 		assert (stop >= start) ;
+		List.iter (fun m -> m.update_for_cut t.content start stop) t.marks ;
+		Log.p "Cutting '%s' from %d to %d..." (Rope.to_string t.content) start stop ;
 		t.content <- Rope.cut t.content start stop ;
-		let update_mark mark =
-			if mark.pos >= stop then mark.pos <- mark.pos - (stop-start)
-			else if mark.pos >= start then mark.pos <- start in
-		List.iter update_mark t.marks
+		Log.p "Got : '%s'" (Rope.to_string t.content)
 
 	let append t c = insert t (Rope.length (content t)) c
 	let append_string t s = insert t (Rope.length (content t)) (Rope.of_string s)

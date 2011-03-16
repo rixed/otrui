@@ -77,25 +77,53 @@ end
 
 
 module Rope = Rope_impl.Make
+type rope = char Rope.t
 
+module type MARK_BASE =
+sig
+	type t
+
+	val to_beginning_of   : t -> rope -> unit
+	val to_end_of         : t -> rope -> unit
+	val update_for_insert : t -> rope -> int -> rope -> unit
+	val update_for_cut    : t -> rope -> int -> int -> unit
+	val pos               : t -> int
+end
+
+type mark =
+	{ to_beginning_of   : rope -> unit ;	(* move this mark to the beginning of the given rope *)
+	  to_end_of         : rope -> unit ;	(* etc... *)
+	  update_for_insert : rope -> int -> rope -> unit ;
+	  update_for_cut    : rope -> int -> int -> unit ;
+	  pos               : unit -> int }
+
+module type MARK =
+sig
+	include MARK_BASE
+
+	val mark : t -> mark
+end
+
+(* As the same buf may be edited via several views, it must know all the marks
+ * used by all the views in order to update all whenever a view updates its
+ * rope. But different kind of views need different kind of marks at the same
+ * time. So each mark must come with its functions. *)
 module type BUF =
 sig
 	type t
-	type mark
 
-	val content : t -> char Rope.t
-	val mark    : t -> int -> mark
+	val mark    : t -> mark -> unit
 	val unmark  : t -> mark -> unit
-	val pos     : mark -> int
-	val set_pos : mark -> int -> unit
-	val insert  : t -> int -> char Rope.t -> unit
+
+	val content : t -> rope
+	val insert  : t -> int -> rope -> unit
 	val cut     : t -> int -> int -> unit
 
 	val execute : t -> int list -> unit
 	(* [execute t cmd] executes the cmd on t or raise Cmd.Unknown *)
 
 	val length  : t -> int
-	val append  : t -> char Rope.t -> unit
+	val append  : t -> rope -> unit
 end
 
 

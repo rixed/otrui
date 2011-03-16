@@ -1,6 +1,8 @@
 open Otrui
 
-module type VIEW_TEXT =
+exception Cannot_move
+
+module type S =
 sig
 	module Buf : BUF
 	include VIEW_BASE
@@ -13,8 +15,11 @@ sig
 	val create : ?append:bool -> Buf.t -> t
 end
 
+module MarkLine = Mark_lines.Make
+module Mark = Mark_impl.Make (MarkLine)
+
 module Make (Buf : BUF) (Term : TERM) (Cmd : CMD with module Term = Term) :
-	VIEW_TEXT with module Buf = Buf and module Term = Term =
+	S with module Buf = Buf and module Term = Term =
 struct
 	module Term = Term
 	module Buf  = Buf
@@ -24,8 +29,8 @@ struct
 		  mutable color             : Term.color_pair ;
 		  mutable no_content_color  : Term.color_pair ;
 		  mutable wrap_symbol_color : Term.color_pair ;
-		  mutable cursor            : Buf.mark ;
-		  mutable pos_first_line    : Buf.mark ;
+		  mutable cursor            : MarkLine.t ;
+		  mutable pos_first_line    : MarkLine.t ;
 		  mutable wrap_lines        : bool ;
 		  mutable tab_width         : int ;
 		  mutable offset_x          : int ;
@@ -33,7 +38,7 @@ struct
 		  mutable scroll_margin_x   : int ;
 		  mutable last_height       : int ;
 		  mutable last_width        : int ;
-		  key_bindings              : (key, t -> Buf.mark -> unit) Hashtbl.t }
+		  key_bindings              : (key, t -> MarkLine.t -> unit) Hashtbl.t }
 
 	let text_views = ref []
 
@@ -42,90 +47,93 @@ struct
 	let default_wrap_symbol_color = ref (0, false)
 	let default_tab_width         = ref 8
 
-	let from_line_start t pos =
-		let rec aux off pos =
-			if pos = 0 || Rope.nth (Buf.content t.buf) (pos-1) = '\n' then off
-			else aux (off+1) (pos-1) in
-		aux 0 pos
+	(* Helper functions *)
 
-	let to_line_end t pos =
-		let rec aux off pos =
-			if pos = Buf.length t.buf then off else
-			if Rope.nth (Buf.content t.buf) pos = '\n' then off
-			else aux (off+1) (pos+1) in
-		aux 0 pos
+	let nb_lines_between m1 m2 = m2.MarkLine.lineno - m1.MarkLine.lineno
 
-	let rec nb_lines_between t pos1 pos2 =
-		if pos2 >= pos1 then
-			let s = Rope.sub (Buf.content t.buf) pos1 pos2 in
-			Rope.fold_left (fun l c -> if c = '\n' then l+1 else l) 0 s
-		else - (nb_lines_between t pos2 pos1)
+	let move_to_line_start _ m = m.MarkLine.lineoff <- 0
 
-	let more_lines_than n t pos =	(* Check that there are more than n lines from pos to end *)
-		let s = Rope.sub (Buf.content t.buf) pos (Buf.length t.buf) in
-		try ignore (Rope.fold_left (fun l c ->
-			if c = '\n' then (if l >= n then raise Exit else l+1)
-			else l) 1 s) ;
-			false
-		with Exit -> true
+	let line_stop t m =
+		let rec aux c =
+			if c < Buf.length t.buf && Rope.nth (Buf.content t.buf) c <> '\n' then aux (c+1)
+			else c in
+		aux (MarkLine.pos m)
 
-	exception Cannot_move
+	let line_start _ m = m.MarkLine.linepos
 
-	let move_up t mark =
-		let offset = from_line_start t (Buf.pos mark) in
-		if offset = Buf.pos mark then raise Cannot_move ;
-		let prev_line_len = from_line_start t ((Buf.pos mark) - offset - 1) in
-		Buf.set_pos mark ((Buf.pos mark) - offset - 1 -
-			(if prev_line_len >= offset then prev_line_len - offset else 0))
+	let rec move_to_line_end t m =
+		m.MarkLine.lineoff <- line_stop t m - m.MarkLine.linepos
 
-	let move_down t mark =
-		let offset = from_line_start t (Buf.pos mark) in
-		let to_end = to_line_end t (Buf.pos mark) in
-		if (Buf.pos mark) + to_end >= Buf.length t.buf - 1 then raise Cannot_move ;
-		let next_line_len = to_line_end t ((Buf.pos mark) + to_end + 1) in
-		Buf.set_pos mark ((Buf.pos mark) + to_end + 1 +
-			(if next_line_len >= offset then offset else next_line_len))
+	let move_right t m =
+		let p = MarkLine.pos m in
+		if Buf.length t.buf <= p then raise Cannot_move ;
+		if Rope.nth (Buf.content t.buf) p = '\n' then (
+			m.MarkLine.linepos <- m.MarkLine.linepos + m.MarkLine.lineoff + 1 ;
+			m.MarkLine.lineoff <- 0 ;
+			m.MarkLine.lineno <- m.MarkLine.lineno + 1
+		) else
+			m.MarkLine.lineoff <- m.MarkLine.lineoff + 1
 
-	let move_left _t mark =
-		if Buf.pos mark <= 0 then raise Cannot_move ;
-		Buf.set_pos mark ((Buf.pos mark) - 1)
+	let move_left t m =
+		if m.MarkLine.lineoff > 0 then
+			m.MarkLine.lineoff <- m.MarkLine.lineoff - 1
+		else if m.MarkLine.lineno > 0 then (
+			m.MarkLine.lineno <- m.MarkLine.lineno - 1 ;
+			m.MarkLine.lineoff <- 0 ;
+			assert (m.MarkLine.linepos > 0) ;
+			m.MarkLine.linepos <- m.MarkLine.linepos - 1 ;
+			assert (Rope.nth (Buf.content t.buf) m.MarkLine.linepos = '\n') ;
+			while m.MarkLine.linepos > 0 && Rope.nth (Buf.content t.buf) (m.MarkLine.linepos - 1) <> '\n' do
+				m.MarkLine.linepos <- m.MarkLine.linepos - 1 ;
+				m.MarkLine.lineoff <- m.MarkLine.lineoff + 1
+			done
+		) else raise Cannot_move
 
-	let move_right t mark =
-		if Buf.pos mark >= Buf.length t.buf then raise Cannot_move ;
-		Buf.set_pos mark ((Buf.pos mark) + 1)
+	let move_up t m =
+		if m.MarkLine.linepos = 0 then raise Cannot_move ;
+		let off = m.MarkLine.lineoff in
+		move_to_line_start t m ;
+		move_left t m ;
+		if m.MarkLine.lineoff > off then m.MarkLine.lineoff <- off
 
+	let move_down t m =
+		let off = m.MarkLine.lineoff in
+		move_to_line_end t m ;
+		move_right t m ;
+		move_to_line_end t m ;
+		if m.MarkLine.lineoff > off then m.MarkLine.lineoff <- off
+
+	let more_lines_than h t m =
+		let m' = { m with MarkLine.linepos = m.MarkLine.linepos } in
+		let rec aux h =
+			if h = 0 then true else (
+				move_down t m' ;
+				aux (h-1)
+			) in
+		try aux h with Cannot_move -> false
+		
 	let move_page_up t mark = for i = 1 to t.last_height - 1 do move_up t mark done
 	let move_page_down t mark = for i = 1 to t.last_height - 1 do move_down t mark done
 
-	let move_to_line_start t mark =
-		let disp = from_line_start t (Buf.pos mark) in
-		Buf.set_pos mark ((Buf.pos mark) - disp)
-
-	let move_to_line_end t mark =
-		let disp = to_line_end t (Buf.pos mark) in
-		Buf.set_pos mark ((Buf.pos mark) + disp)
-
-	let move_to_start _t mark = Buf.set_pos mark 0
-	let move_to_end t mark = Buf.set_pos mark (Buf.length t.buf)
-
 	let insert_char_of_key k t mark =
 		let c = Term.Key.to_char k in
-		Buf.insert t.buf (Buf.pos mark) (Rope.singleton c)
+		Buf.insert t.buf (MarkLine.pos mark) (Rope.singleton c)
 
 	let backspace t mark =
-		if Buf.pos mark == 0 then raise Cannot_move ;
-		Buf.cut t.buf ((Buf.pos mark)-1) (Buf.pos mark)
+		if MarkLine.pos mark == 0 then raise Cannot_move ;
+		Buf.cut t.buf ((MarkLine.pos mark)-1) (MarkLine.pos mark)
 
 	let delete t mark =
-		if Buf.pos mark == Buf.length t.buf then raise Cannot_move ;
-		Buf.cut t.buf (Buf.pos mark) ((Buf.pos mark) + 1)
+		if MarkLine.pos mark == Buf.length t.buf then raise Cannot_move ;
+		Buf.cut t.buf (MarkLine.pos mark) ((MarkLine.pos mark) + 1)
 
 	let delete_line t mark =
-		let start = from_line_start t (Buf.pos mark)
-		and stop = to_line_end t (Buf.pos mark) in
+		let start = line_start t mark
+		and stop = line_stop t mark in
 		Buf.cut t.buf start stop
 
 	let set_default_key_bindings t =
+		let to_mark f t m = f m (Buf.content t.buf) in
 		Hashtbl.clear t.key_bindings ;
 		List.iter (fun (k, f) -> Hashtbl.add t.key_bindings k f)
 			[ Term.Key.left,       move_left ;
@@ -136,8 +144,8 @@ struct
 			  Term.Key.npage,      move_page_down ;
 			  Term.Key.of_int 1,   move_to_line_start ; (* Ctrl+A *)
 			  Term.Key.of_int 5,   move_to_line_end ;	(* Ctrl+E *)
-			  Term.Key.of_int 551, move_to_start ;	(* Ctrl+PPage *)
-			  Term.Key.of_int 546, move_to_end ;	(* Ctrl+NPage *)
+			  Term.Key.of_int 551, to_mark MarkLine.to_beginning_of ;	(* Ctrl+PPage *)
+			  Term.Key.of_int 546, to_mark MarkLine.to_end_of ;	(* Ctrl+NPage *)
 			  Term.Key.backspace,  backspace ;
 			  Term.Key.delete,     delete ]
 
@@ -147,8 +155,8 @@ struct
 			  color             = !default_color ;
 			  no_content_color  = !default_no_content_color ;
 			  wrap_symbol_color = !default_wrap_symbol_color ;
-			  cursor            = Buf.mark buf (if append then Buf.length buf else 0) ;
-			  pos_first_line    = Buf.mark buf 0 ;
+			  cursor            = MarkLine.create () ;
+			  pos_first_line    = MarkLine.create () ;
 			  wrap_lines        = false ;
 			  tab_width         = !default_tab_width ;
 			  offset_x          = 0 ;
@@ -157,13 +165,17 @@ struct
 			  last_height       = 1 ;
 			  last_width        = 1 ;
 			  key_bindings      = Hashtbl.create 11 } in
+		if append then MarkLine.to_end_of t.cursor (Buf.content buf) ;
+		let cursor = Mark.mark t.cursor and pos_first_line = Mark.mark t.pos_first_line in
+		Buf.mark t.buf cursor ;
+		Buf.mark t.buf pos_first_line ;
 		set_default_key_bindings t ;
 		text_views := t :: !text_views ;
 		(* Remove our marks from buffer when we die (which won't happen until we get
 		 * removed from !text_views *)
 		Gc.finalise (fun t ->
-			Buf.unmark t.buf t.cursor ;
-			Buf.unmark t.buf t.pos_first_line) t ;
+			Buf.unmark t.buf cursor ;
+			Buf.unmark t.buf pos_first_line) t ;
 		t
 
 	(* Reset starting position of display according to scroll_margin_y *)
@@ -171,23 +183,25 @@ struct
 		assert (height >= 1) ;
 		(* scroll up *)
 		while
-			let cursor_y = nb_lines_between t (Buf.pos t.pos_first_line) (Buf.pos t.cursor) in
-			cursor_y < margin && Buf.pos t.pos_first_line > 0
+			let cursor_y = nb_lines_between t.pos_first_line t.cursor in
+			cursor_y < margin && MarkLine.pos t.pos_first_line > 0
 		do
 			move_up t t.pos_first_line
 		done ;
-		assert (Buf.pos t.pos_first_line <= Buf.pos t.cursor) ;
+		assert (MarkLine.pos t.pos_first_line <= MarkLine.pos t.cursor) ;
 		(* scroll down *)
 		while
-			let cursor_y' = height - 1 - nb_lines_between t (Buf.pos t.pos_first_line) (Buf.pos t.cursor) in
-			cursor_y' < margin && more_lines_than height t (Buf.pos t.pos_first_line)
+			let cursor_y' = height - 1 - nb_lines_between t.pos_first_line t.cursor in
+			cursor_y' < margin && more_lines_than height t t.pos_first_line
 		do
 			move_down t t.pos_first_line
 		done
 
 	let content_status t =
 		let len = Buf.length t.buf in
-		Printf.sprintf "%d chars" len
+		Printf.sprintf "l:%d,%d c:%d/%d (curs:%d,%d,%d)"
+			t.cursor.MarkLine.lineno t.cursor.MarkLine.lineoff (MarkLine.pos t.cursor) len
+			t.cursor.MarkLine.linepos t.cursor.MarkLine.lineoff t.cursor.MarkLine.lineno
 
 	let draw t x0 y0 width height focused =
 		Log.p "display from %d,%d, width=%d, height=%d" x0 y0 width height ;
@@ -198,7 +212,7 @@ struct
 			 * from the beginning of the line. This may become different after a line wrap *)
 			if y >= height then raise Exit ;
 			if c = '\n' then (
-				let col = if focused && n = Buf.pos t.cursor then
+				let col = if focused && n = MarkLine.pos t.cursor then
 					Term.reverse t.color else t.no_content_color in
 				Term.set_color col ;
 				for x = x to width-1 do
@@ -219,7 +233,7 @@ struct
 						if x < width-1 then (
 							Term.set_color (
 								if idx > 0 then t.no_content_color else
-								if focused && n = Buf.pos t.cursor then Term.reverse t.color else t.color) ;
+								if focused && n = MarkLine.pos t.cursor then Term.reverse t.color else t.color) ;
 							Term.print (x+x0) (y+y0) (int_of_char s.[idx]) ;
 							aux (idx+1) (x+1) (xl+1) y
 						) else (
@@ -238,11 +252,11 @@ struct
 				next_x, next_xl, next_y, n+1
 			) in
 		(* So that cursor is draw even when at the end of buffer *)
-		let buf_eff = Rope.sub (Buf.content t.buf) (Buf.pos t.pos_first_line) (Buf.length t.buf) in
-		let buf_eff = if focused && Buf.pos t.cursor = Buf.length t.buf then
+		let buf_eff = Rope.sub (Buf.content t.buf) (MarkLine.pos t.pos_first_line) (Buf.length t.buf) in
+		let buf_eff = if focused && MarkLine.pos t.cursor = Buf.length t.buf then
 			Rope.cat buf_eff (Rope.singleton ' ') else buf_eff in
 		(try
-			let x, _, y, _ = Rope.fold_left put_chr (0, t.offset_x, 0, Buf.pos t.pos_first_line) buf_eff in
+			let x, _, y, _ = Rope.fold_left put_chr (0, t.offset_x, 0, MarkLine.pos t.pos_first_line) buf_eff in
 			(* deletes the rest of the buffer *)
 			let rec aux x y =
 				if y < height then (

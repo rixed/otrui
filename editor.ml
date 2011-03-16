@@ -23,17 +23,18 @@ let repl =
 
 (* Then a text editor for editing it *)
 
-let repl_view = Repl_text_view.create ~append:true repl
+let repl_view = Repl_view.view (Repl_text_view.create ~append:true repl) "REPL"
 
 (* An empty window to show it *)
 
 module Win = Win_impl.Make
 
-let win = ref (Win.singleton (Repl_view.view repl_view "REPL"))
+let win = ref (Win.singleton repl_view)
 
 (* Then the set of named views that must be kept even when not in any window *)
 
 let named_views = Hashtbl.create 17
+let () = Hashtbl.add named_views "REPL" repl_view
 
 let add_view name view =
 	let rec uniq_name suffix =
@@ -61,10 +62,10 @@ let rope_buf_of_file fname =
 	Buf.append r (Rope.of_file fname) ;
 	r
 let add_and_open_file fname =
-	let view = Rope_text_view.create (rope_buf_of_file fname) in
+	let view = Rope_text_view.create ~append:true (rope_buf_of_file fname) in
 	add_and_open_view fname (Rope_view.view view fname)
 
-let () = add_and_open_file "otrui.ml"
+let () = add_and_open_file ".otrui.rc"
 
 (* And then the function to draw the window *)
 
@@ -115,7 +116,7 @@ let widen_focus ()      = win := Win.widen !win
 let resize_focus way sz = win := Win.resize way sz !win
 let exchange_focus way  = win := Win.exchange way !win
 let delete_focus ()     = win := Win.to_leaf (Win.delete !win)
-let is_focused view     = Some view = Win.root !win
+let is_focused view     = match Win.root !win with Some v when v == view -> true | _ -> false
 let is_mapped view      = Win.exists ((=) view) !win
 let set_view view       = win := Win.set_root !win view
 let split_focus dir     =
@@ -268,3 +269,4 @@ let rec key_loop last_error =
 		try handle_key k ; ""
 		with Cmd.Error str -> str in
 	key_loop next_error
+

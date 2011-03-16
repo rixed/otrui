@@ -1,4 +1,5 @@
+open Otrui;;
 open Editor;;
 
-Repl_buf.append repl (Repl_buf.Rope.of_string "Loading local preference file...\n");;
+Repl.append repl (Rope.of_string "Loading local preference file...\n");;
 
