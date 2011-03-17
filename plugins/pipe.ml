@@ -31,7 +31,6 @@ struct
 	type t =
 		{ buf         : Buf.t ;
 		  prompt_mark : mark ;
-		  mutex       : Mutex.t ;
 		  ch_out      : out_channel ;
 		  prompt      : char Rope.t }
 
@@ -42,7 +41,7 @@ struct
 	let append t  = Buf.append t.buf
 	let length t  = Buf.length t.buf
 
-	(* Caller must own mutex *)
+	(* Caller must own Editor.mutex *)
 	let append_prompt t =
 		let len = length t in
 		if t.prompt_mark.pos () < len - (Rope.length t.prompt) then (
@@ -56,11 +55,13 @@ struct
 		let reader ch t =
 			let aux () =
 				let line = input_line ch in
+				Mutex.lock Editor.mutex ;
 				Log.p "Receiving string '%s' from program" line ;
 				let line = Rope.cat (Rope.of_string line) (Rope.singleton '\n') in
-				with_mutex t.mutex (fun () ->
-					let pos = t.prompt_mark.pos () in
-					Buf.insert t.buf pos line) () in
+				let pos = t.prompt_mark.pos () in
+				Buf.insert t.buf pos line ;
+				Condition.signal Editor.redraw_cond ;
+				Mutex.unlock Editor.mutex in
 			try forever aux ()
 			with End_of_file ->
 				Log.p "program '%s' exited" program in
@@ -69,7 +70,6 @@ struct
 		let t =
 			{ buf         = Buf.create () ;
 			  prompt_mark = Mark.mark (MarkOffset.create ()) ;
-			  mutex       = Mutex.create () ;
 			  ch_out      = ch_out ;
 			  prompt      = prompt } in
 		t.prompt_mark.to_end_of (content t) ;
@@ -83,7 +83,8 @@ struct
 		t
 
 	(* Now redefine insert to send to program stdin *)
-	let insert_locked t p c =
+	(* Caller must own Editor.mutex *)
+	let insert t p c =
 		let appending = p = length t in
 		Buf.insert t.buf p c ;
 		let cur_len = length t in
@@ -104,21 +105,17 @@ struct
 				Cmd.error str
 		)
 
-	let insert t p c = with_mutex t.mutex (insert_locked t p) c
-
 	let exec t str =
-		with_mutex t.mutex (fun () ->
-			append_prompt t ;
-			let cmd = Rope.cat (Rope.of_string str) (Rope.singleton '\n') in
-			insert_locked t (length t) cmd) ()
+		append_prompt t ;
+		let cmd = Rope.cat (Rope.of_string str) (Rope.singleton '\n') in
+		insert t (length t) cmd
 	
 	(* Disallow to delete the last prompt *)
 	let cut t start stop =
-		with_mutex t.mutex (fun () ->
-			let prompt_start = t.prompt_mark.pos () in
-			let prompt_stop = prompt_start + (Rope.length t.prompt) in
-			if start >= prompt_stop || stop <= prompt_start then
-				Buf.cut t.buf start stop) ()
+		let prompt_start = t.prompt_mark.pos () in
+		let prompt_stop = prompt_start + (Rope.length t.prompt) in
+		if start >= prompt_stop || stop <= prompt_start then
+			Buf.cut t.buf start stop
 end
 
 (* Create a simple pipe to a shell (later, implement the "|program" command that forks program and split the current view) *)

@@ -129,6 +129,9 @@ type mode = Command | Insert
 let mode = ref Insert
 let auto_insert = ref true	(* return in insert mode once command is executed *)
 let command = ref []
+let last_error = ref ""
+let mutex = Mutex.create ()
+let redraw_cond = Condition.create ()
 
 let init_default_commands =
 	let way_of_key dir =
@@ -212,7 +215,7 @@ let init_default_commands =
 		| x -> prev_execute x
 
 
-let rec key_loop last_error =
+let rec key_loop () =
 	let rec do_count_times focused ?count = function
 		(* nop *)
 		| [] -> ()
@@ -255,18 +258,32 @@ let rec key_loop last_error =
 					do_count_times focused cmd
 				)
 		) in
-	let left = match !mode with
-		| Insert -> last_error
-		| Command -> "Cmd: " ^ Cmd.string_of_command (List.rev !command)
-	and right = match !mode with
-		| Insert -> "Insert"
-		| Command -> "Command" in
-	(* Draw the screen *)
-	draw !win left right ;
-
 	let k = Term.Key.get () in
-	let next_error =
-		try handle_key k ; ""
-		with Cmd.Error str -> str in
-	key_loop next_error
+	Mutex.lock mutex ;
+	last_error :=
+		(try handle_key k ; ""
+		with Cmd.Error str -> str) ;
+	Condition.signal redraw_cond ;
+	Mutex.unlock mutex ;
+	key_loop ()
+
+(* The thread that redraw the screen when signaled *)
+
+let draw_thread () =
+	let loop () =
+		Mutex.lock mutex ;
+		let left = match !mode with
+			| Insert -> !last_error
+			| Command -> "Cmd: " ^ Cmd.string_of_command (List.rev !command)
+		and right = match !mode with
+			| Insert -> "Insert"
+			| Command -> "Command" in
+		draw !win left right ;
+		Condition.wait redraw_cond mutex ;
+		Mutex.unlock mutex in
+	forever loop ()
+
+let start () =
+	ignore (Thread.create draw_thread ()) ;
+	key_loop ()
 

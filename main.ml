@@ -8,5 +8,5 @@ let start =
 	Repl.eval repl ("#load \""^instdir^"/system.cmo\"") ;
 	Repl.eval repl ("#use \""^(Unix.getenv "HOME")^"/.otrui.rc\"") ;
 	Repl.eval repl "#use \"./.otrui.rc\"" ;
-	key_loop ""
+	Editor.start ()
 
