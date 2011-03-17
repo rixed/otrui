@@ -53,7 +53,9 @@ let get_view name = Hashtbl.find named_views name
 
 (* Returns a list of all kept views *)
 let hashtbl_keys h = Hashtbl.fold (fun k _ l -> k::l) h []
-let views () = hashtbl_keys named_views
+let hashtbl_values h = Hashtbl.fold (fun _ v l -> v::l) h []
+let view_names () = hashtbl_keys named_views
+let views () = hashtbl_values named_views
 
 (* Another test *)
 
@@ -117,7 +119,7 @@ let resize_focus way sz = win := Win.resize way sz !win
 let exchange_focus way  = win := Win.exchange way !win
 let delete_focus ()     = win := Win.to_leaf (Win.delete !win)
 let is_focused view     = match Win.root !win with Some v when v == view -> true | _ -> false
-let is_mapped view      = Win.exists ((=) view) !win
+let is_mapped view      = Win.exists ((==) view) !win
 let set_view view       = win := Win.set_root !win view
 let split_focus dir     =
 	let view = unopt (Win.root (Win.to_leaf !win)) in
@@ -143,6 +145,14 @@ let init_default_commands =
 	let is_direction k =
 		k = Term.Key.left || k = Term.Key.right ||
 		k = Term.Key.up   || k = Term.Key.down in
+	let rec get_next_unmapped views =
+		let rec aux take = function
+			| [] -> aux true views
+			| v :: rest ->
+				if take && is_focused v then raise Not_found ;
+				if take && not (is_mapped v) then v
+				else aux (take || is_focused v) rest in
+		aux false views in
 	let c2i = Cmd.c2i
 	and prev_execute = !Cmd.execute in
 	Cmd.execute := function
@@ -183,30 +193,16 @@ let init_default_commands =
 		| [ w ; d ] when w = c2i 'w' && d = c2i 'd' ->
 			(try delete_focus ()
 			with Not_found -> Cmd.error "Cannot unmap everything")
-		(* Change the view of the focused window to the next one *)
+		(* Change the view of the focused window to the next hidden one.
+		 * This is important that a view is not mapped several times, since a view
+		 * is supposed to be unique (for instance, text_view, store it's size, cursor position, etc.) *)
 		| [ b ; n ] when b = c2i 'b' && n = c2i 'n' ->
-			(try
-				let views = views () in
-				let first = List.hd views in
-				let rec aux take = function
-					| [] -> assert take ; get_view first
-					| n :: rest ->
-						let v = get_view n in
-						if take then v else aux (is_focused v) rest in
-				let next = aux false views in set_view next
-			with Not_found -> Cmd.error "Not a single views?")
+			(try set_view (get_next_unmapped (views ()))
+			with Not_found -> Cmd.error "No hidden views")
 		(* Change the view of the focused window to the previous one *)
 		| [ b ; p ] when b = c2i 'b' && p = c2i 'p' ->
-			(try
-				let views = views () in
-				let first = get_view (List.hd views) in
-				let rec aux prev = function
-					| [] -> prev (* the first was focused *)
-					| n :: rest ->
-						let v = get_view n in
-						if is_focused v then prev else aux v rest in
-				let prev = aux first (List.tl views) in set_view prev
-			with Not_found -> Cmd.error "Not a single views?")
+			(try set_view (get_next_unmapped (List.rev (views ())))
+			with Not_found -> Cmd.error "No hidden views")
 		(* Split the current focused window *)
 		| [ w ; s ; dir ] when w = c2i 'w' && s = c2i 's' && is_direction dir ->
 			(try split_focus (way_of_key dir)
