@@ -59,7 +59,7 @@ struct
 				Log.p "Receiving string '%s' from program" line ;
 				let line = Rope.cat (Rope.of_string line) (Rope.singleton '\n') in
 				with_mutex t.mutex (fun () ->
-					let pos = t.prompt_mark.pos () + 1 - (Rope.length t.prompt) in
+					let pos = t.prompt_mark.pos () in
 					Buf.insert t.buf pos line) () in
 			try forever aux ()
 			with End_of_file ->
