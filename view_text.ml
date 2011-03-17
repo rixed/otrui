@@ -144,6 +144,8 @@ struct
 			  Term.Key.npage,      move_page_down ;
 			  Term.Key.of_int 1,   move_to_line_start ; (* Ctrl+A *)
 			  Term.Key.of_int 5,   move_to_line_end ;	(* Ctrl+E *)
+			  Term.Key.home,       to_mark MarkLine.to_beginning_of ;
+			  Term.Key.end_,       to_mark MarkLine.to_end_of ;
 			  Term.Key.of_int 551, to_mark MarkLine.to_beginning_of ;	(* Ctrl+PPage *)
 			  Term.Key.of_int 546, to_mark MarkLine.to_end_of ;	(* Ctrl+NPage *)
 			  Term.Key.backspace,  backspace ;

@@ -8,6 +8,8 @@ sig
 	val down      : key
 	val ppage     : key
 	val npage     : key
+	val home      : key
+	val end_      : key
 	val backspace : key
 	val delete    : key
 	val escape    : key
