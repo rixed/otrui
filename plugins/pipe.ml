@@ -37,7 +37,6 @@ struct
 	let content t = Buf.content t.buf
 	let mark t    = Buf.mark t.buf
 	let unmark t  = Buf.unmark t.buf
-	let execute t = Buf.execute t.buf
 	let append t  = Buf.append t.buf
 	let length t  = Buf.length t.buf
 	let undo t    = Buf.undo t.buf
@@ -140,16 +139,5 @@ let () =
 	let shell = pipe_buf_of_prog "/bin/sh" ">% " in
 	let shell_view = Pipe_text_view.create ~append:true shell in
 	let v = Pipe_view.view shell_view "|shell" in
-	Editor.add_and_open_view "|shell" v ;
-	let c2i = Cmd.c2i
-	and prev_execute = !Cmd.execute in
-	Cmd.execute := function
-	(* send a command to the shell *)
-	| bang :: cmd when bang = c2i '!' ->
-		(try
-			let cmd = Cmd.string_of_command cmd in
-			Pipe.exec shell cmd
-		with Invalid_argument _ -> Cmd.error "Cannot execute this 'string'")
-	(* unknown command *)
-	| x -> prev_execute x
+	Editor.add_and_open_view "|shell" v
 

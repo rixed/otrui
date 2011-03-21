@@ -94,14 +94,4 @@ struct
 	let append t c = insert t (Rope.length (content t)) c
 	let append_string t s = insert t (Rope.length (content t)) (Rope.of_string s)
 	let length t = Rope.length (content t)
-
-	let execute t = function
-		(* undo *)
-		| [ u ; n ; d ; o ] when u = Cmd.c2i 'u' && n = Cmd.c2i 'n' && d = Cmd.c2i 'd' && o = Cmd.c2i 'o' ->
-			(try undo t with Not_found -> Cmd.error "No history")
-		(* redo *)
-		| [ r ; e ; d ; o ] when r = Cmd.c2i 'r' && e = Cmd.c2i 'e' && d = Cmd.c2i 'd' && o = Cmd.c2i 'o' ->
-			(try redo t with Not_found -> Cmd.error "No future!")
-		(* unknown *)
-		| _ -> raise Cmd.Unknown
 end

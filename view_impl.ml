@@ -9,7 +9,6 @@ struct
 	let view t name =
 		{ draw    = draw t ;
 		  key     = key t ;
-		  execute = execute t ;
 		  descr   = (fun () -> name) ;
 		  status  = eta content_status t }
 end

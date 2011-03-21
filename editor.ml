@@ -138,15 +138,6 @@ let mutex = Mutex.create ()
 let redraw_cond = Condition.create ()
 
 let init_default_commands =
-	let way_of_key dir =
-		if dir = Term.Key.up    then Win.Up else
-		if dir = Term.Key.down  then Win.Down else
-		if dir = Term.Key.left  then Win.Left else
-		if dir = Term.Key.right then Win.Right else
-		invalid_arg "not a direction" in
-	let is_direction k =
-		k = Term.Key.left || k = Term.Key.right ||
-		k = Term.Key.up   || k = Term.Key.down in
 	let rec get_next_unmapped views =
 		let rec aux take = function
 			| [] -> aux true views
@@ -155,63 +146,50 @@ let init_default_commands =
 				if take && not (is_mapped v) then v
 				else aux (take || is_focused v) rest in
 		aux false views in
-	let c2i = Cmd.c2i
-	and prev_execute = !Cmd.execute in
-	Cmd.execute := function
-		(* quit *)
-		| [ q ] when q = c2i 'q' ->
-			Log.p "Quit" ;
-			Term.quit () ; exit 0
-		(* send a command to the repl *)
-		| dash :: cmd when dash = c2i '#' ->
-			(try Repl.eval repl (Cmd.string_of_command cmd)
-			with Invalid_argument _ -> Cmd.error "Cannot evaluate this 'string'")
-		(* change focus *)
-		| [ w ; dir ] when w = c2i 'w' && is_direction dir ->
-			Log.p "Changing focus" ;
-			(try
-				let way = way_of_key dir in
-				move_focus_to way
-			with Not_found -> Cmd.error "No window there")
-		| [ w ; npage ] when w = c2i 'w' && npage = Term.Key.npage ->
-			(try deepen_focus ()
-			with Not_found -> Cmd.error "No window down there")
-		| [ w ; ppage ] when w = c2i 'w' && ppage = Term.Key.ppage ->
-			(try widen_focus ()
-			with Not_found -> Cmd.error "No window up there")
-		(* change window size *)
-		| [ w ; a ; dir ] when w = c2i 'w' && (a = c2i '+' || a = c2i '-') && is_direction dir ->
-			let way = way_of_key dir in
-			(try
-				let sz = if a = c2i '+' then 1 else ~-1 in
-				resize_focus way sz
-			with Not_found -> Cmd.error "Cannot resize in this direction")
-		(* Exchange two windows *)
-		| [ w ; x ; dir ] when w = c2i 'w' && x = c2i 'x' && is_direction dir ->
-			let way = way_of_key dir in
-			(try exchange_focus way
-			with Not_found -> Cmd.error "No other window in this direction")
-		(* Unmap the focused view *)
-		| [ w ; d ] when w = c2i 'w' && d = c2i 'd' ->
-			(try delete_focus ()
-			with Not_found -> Cmd.error "Cannot unmap everything")
-		(* Change the view of the focused window to the next hidden one.
-		 * This is important that a view is not mapped several times, since a view
-		 * is supposed to be unique (for instance, text_view, store it's size, cursor position, etc.) *)
-		| [ b ; n ] when b = c2i 'b' && n = c2i 'n' ->
-			(try set_view (get_next_unmapped (views ()))
-			with Not_found -> Cmd.error "No hidden views")
-		(* Change the view of the focused window to the previous one *)
-		| [ b ; p ] when b = c2i 'b' && p = c2i 'p' ->
-			(try set_view (get_next_unmapped (List.rev (views ())))
-			with Not_found -> Cmd.error "No hidden views")
-		(* Split the current focused window *)
-		| [ w ; s ; dir ] when w = c2i 'w' && s = c2i 's' && is_direction dir ->
-			(try split_focus (way_of_key dir)
-			with _ -> Cmd.error "Cannot split?")
-		(* unknown command *)
-		| x -> prev_execute x
-
+	let c2i = Cmd.c2i in
+	(* quit *)
+	Cmd.register_cmd [ c2i 'q' ] (fun () ->
+		Log.p "Quit" ;
+		Term.quit () ;
+		exit 0) ;
+	(* change focus *)
+	Cmd.register_cmd [ c2i 'w' ; Term.Key.left  ] (fun () -> move_focus_to Win.Left) ;
+	Cmd.register_cmd [ c2i 'w' ; Term.Key.right ] (fun () -> move_focus_to Win.Right) ;
+	Cmd.register_cmd [ c2i 'w' ; Term.Key.up    ] (fun () -> move_focus_to Win.Up) ;
+	Cmd.register_cmd [ c2i 'w' ; Term.Key.down  ] (fun () -> move_focus_to Win.Down) ;
+	Cmd.register_cmd [ c2i 'w' ; Term.Key.npage ] deepen_focus ;
+	Cmd.register_cmd [ c2i 'w' ; Term.Key.ppage ] widen_focus ;
+	(* change window size *)
+	Cmd.register_cmd [ c2i 'w' ; c2i '+' ; Term.Key.left  ] (fun () -> resize_focus Win.Left 1) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i '+' ; Term.Key.right ] (fun () -> resize_focus Win.Right 1) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i '+' ; Term.Key.up    ] (fun () -> resize_focus Win.Up 1) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i '+' ; Term.Key.down  ] (fun () -> resize_focus Win.Down 1) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i '-' ; Term.Key.left  ] (fun () -> resize_focus Win.Left ~-1) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i '-' ; Term.Key.right ] (fun () -> resize_focus Win.Right ~-1) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i '-' ; Term.Key.up    ] (fun () -> resize_focus Win.Up ~-1) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i '-' ; Term.Key.down  ] (fun () -> resize_focus Win.Down ~-1) ;
+	(* exchange two windows *)
+	Cmd.register_cmd [ c2i 'w' ; c2i 'x' ; Term.Key.left  ] (fun () -> exchange_focus Win.Left) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i 'x' ; Term.Key.right ] (fun () -> exchange_focus Win.Right) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i 'x' ; Term.Key.up    ] (fun () -> exchange_focus Win.Up) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i 'x' ; Term.Key.down  ] (fun () -> exchange_focus Win.Down) ;
+	(* unmap the focused view *)
+	Cmd.register_cmd [ c2i 'w' ; c2i 'd' ] delete_focus ;
+	(* Change the view of the focused window to the next hidden one.
+	 * This is important that a view is not mapped several times, since a view
+	 * is supposed to be unique (for instance, text_view, store it's size, cursor position, etc.) *)
+	Cmd.register_cmd [ c2i 'b' ; c2i 'n' ] (fun () -> set_view (get_next_unmapped (views ()))) ;
+	(* change the view of the focused window to the previous one *)
+	Cmd.register_cmd [ c2i 'b' ; c2i 'p' ] (fun () -> set_view (get_next_unmapped (List.rev (views ())))) ;
+	(* split the current focused window *)
+	Cmd.register_cmd [ c2i 'w' ; c2i 's' ; Term.Key.left  ] (fun () -> split_focus Win.Left) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i 's' ; Term.Key.right ] (fun () -> split_focus Win.Right) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i 's' ; Term.Key.up    ] (fun () -> split_focus Win.Up) ;
+	Cmd.register_cmd [ c2i 'w' ; c2i 's' ; Term.Key.down  ] (fun () -> split_focus Win.Down) ;
+	(* undo / redo *)
+	Cmd.register_cmd (List.map c2i ['u';'n';'d';'o']) (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.Buf.undo v.Rope_text_view.buf)) ;
+	Cmd.register_cmd (List.map c2i ['r';'e';'d';'o']) (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.Buf.redo v.Rope_text_view.buf)) ;
+	Cmd.register_cmd [ c2i 'd' ; c2i 'd' ] (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.delete_line v v.Rope_text_view.cursor))
 
 let rec key_loop () =
 	let rec do_count_times focused ?count = function
@@ -222,8 +200,7 @@ let rec key_loop () =
 			do_count_times focused ~count:((optdef count 0)*10 + c - (Cmd.c2i '0')) rest
 		| cmd ->
 			for c = 1 to (optdef count 1) do
-				try may focused (fun view -> view.execute cmd)
-				with Cmd.Unknown -> !Cmd.execute cmd
+				let f = Cmd.function_of_cmd cmd false in f ()
 			done in
 	let handle_key k =
 		Log.p "Got key %d" k ;

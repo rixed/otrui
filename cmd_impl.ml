@@ -22,6 +22,31 @@ struct
 				aux (i+1) cmd in
 		aux 0 cmd
 
-	type execute_fun = int list -> unit
-	let execute = ref ((fun _ -> error "Unknown command") : execute_fun)
+	let cmd_tree = Hashtbl.create 11	(* key -> subhash * f_for_key *)
+
+	let register_cmd cmd f =
+		let unk () = raise Unknown in
+		let rec aux root = function
+			| [] -> failwith "Cannot add an empty command"
+			| [k] -> Hashtbl.add root k (Hashtbl.create 11, f)
+			| k :: rest ->
+				let next_root, _ = try Hashtbl.find root k with Not_found -> (
+					let n = Hashtbl.create 11, unk in
+					Hashtbl.add root k n ; n
+				) in
+				aux next_root rest in
+		aux cmd_tree cmd
+
+	let function_of_cmd cmd abbrev = 
+		let rec aux root = function
+			| [] ->
+				if abbrev then (
+					raise Unknown (* TODO *)
+				) else raise Unknown
+			| [k] ->
+				let _, f = try Hashtbl.find root k with Not_found -> raise Unknown in f
+			| k :: rest ->
+				let next_root, _ = try Hashtbl.find root k with Not_found -> raise Unknown in
+				aux next_root rest in
+		aux cmd_tree cmd
 end

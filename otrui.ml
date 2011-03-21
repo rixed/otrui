@@ -73,8 +73,8 @@ sig
 	val c2i : char -> int
 	val string_of_command : key list -> string
 
-	type execute_fun = key list -> unit
-	val execute : execute_fun ref
+	val register_cmd : key list -> (unit -> unit) -> unit
+	val function_of_cmd : key list -> bool -> (unit -> unit)
 end
 
 
@@ -123,9 +123,6 @@ sig
 	val undo    : t -> unit	(* May raise Not_found *)
 	val redo    : t -> unit (* May raise Not_found *)
 
-	val execute : t -> int list -> unit
-	(* [execute t cmd] executes the cmd on t or raise Cmd.Unknown *)
-
 	val length  : t -> int
 	val append  : t -> rope -> unit
 end
@@ -168,16 +165,12 @@ sig
 	val key : t -> key -> unit
 	(* [key t k] enter key k into view t *)
 
-	val execute : t -> int list -> unit
-	(* [execute t cmd] executes the cmd on t or raise Cmd.Unknown *)
-
 	val content_status : t -> string
 end
 
 type view =
 	{ draw    : int -> int -> int -> int -> bool -> unit ;
 	  key     : key -> unit ;
-	  execute : int list -> unit ;
 	  descr   : unit -> string ;
 	  status  : unit -> string }
 

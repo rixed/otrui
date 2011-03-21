@@ -36,7 +36,6 @@ struct
 	let content t = Buf.content t.buf
 	let mark t    = Buf.mark t.buf
 	let unmark t  = Buf.unmark t.buf
-	let execute t = Buf.execute t.buf
 	let length t  = Buf.length t.buf
 	let append t  = Buf.append t.buf
 	let undo t    = Buf.undo t.buf

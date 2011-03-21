@@ -2,24 +2,10 @@ open Otrui
 
 exception Cannot_move
 
-module type S =
-sig
-	module Buf : BUF
-	include VIEW_BASE
-
-	val default_color             : Term.color_pair ref
-	val default_no_content_color  : Term.color_pair ref
-	val default_wrap_symbol_color : Term.color_pair ref
-	val default_tab_width         : int ref
-
-	val create : ?append:bool -> Buf.t -> t
-end
-
 module MarkLine = Mark_lines.Make
 module Mark = Mark_impl.Make (MarkLine)
 
-module Make (Buf : BUF) (Term : TERM) (Cmd : CMD with module Term = Term) :
-	S with module Buf = Buf and module Term = Term =
+module Make (Buf : BUF) (Term : TERM) (Cmd : CMD with module Term = Term) =
 struct
 	module Term = Term
 	module Buf  = Buf
@@ -41,6 +27,7 @@ struct
 		  key_bindings              : (key, t -> MarkLine.t -> unit) Hashtbl.t }
 
 	let text_views = ref []
+	let current = ref None
 
 	let default_color             = ref (0, false)
 	let default_no_content_color  = ref (0, false)
@@ -128,8 +115,11 @@ struct
 		Buf.cut t.buf (MarkLine.pos mark) ((MarkLine.pos mark) + 1)
 
 	let delete_line t mark =
+		Log.p "deleting line..." ;
 		let start = line_start t mark
 		and stop = line_stop t mark in
+		(* If we stopped on the '\n', skip over it *)
+		let stop = if stop < Buf.length t.buf then stop+1 else stop in
 		Buf.cut t.buf start stop
 
 	let set_default_key_bindings t =
@@ -208,6 +198,7 @@ struct
 	let draw t x0 y0 width height focused =
 		Log.p "display from %d,%d, width=%d, height=%d" x0 y0 width height ;
 		t.last_height <- height ; t.last_width <- width ;
+		current := if focused then Some t else None ;
 		center_cursor_y t height t.scroll_margin_y ;
 		let rec put_chr (x, xl, y, n) c =
 			(* x is the screen coordinate while xl is the number of advances (in screen positions)
@@ -277,14 +268,6 @@ struct
 			try Hashtbl.find t.key_bindings k
 			with Not_found -> insert_char_of_key k in
 		(try f t t.cursor with Cannot_move -> Term.beep ())
-
-	let execute t = function
-		(* delete a whole line *)
-		| [ d1 ; d2 ] when d1 = Cmd.c2i 'd' && d2 = Cmd.c2i 'd' ->
-			(try delete_line t t.cursor
-			with Not_found -> Cmd.error "Not in a text view")
-		(* unknown command, try buf ? *)
-		| x -> Buf.execute t.buf x
-
 end
+
 
