@@ -40,6 +40,8 @@ struct
 	let execute t = Buf.execute t.buf
 	let append t  = Buf.append t.buf
 	let length t  = Buf.length t.buf
+	let undo t    = Buf.undo t.buf
+	let redo t    = Buf.redo t.buf
 
 	(* Caller must own Editor.mutex *)
 	let append_prompt t =
@@ -60,6 +62,7 @@ struct
 				let line = Rope.cat (Rope.of_string line) (Rope.singleton '\n') in
 				let pos = t.prompt_mark.pos () in
 				Buf.insert t.buf pos line ;
+				Buf.reset_undo t.buf ;
 				Condition.signal Editor.redraw_cond ;
 				Mutex.unlock Editor.mutex in
 			try forever aux ()
@@ -101,6 +104,7 @@ struct
 				output_string t.ch_out input ;
 				flush t.ch_out ;
 				append_prompt t ;
+				Buf.reset_undo t.buf
 			with Sys_error str ->
 				Cmd.error str
 		)

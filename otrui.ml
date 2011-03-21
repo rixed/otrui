@@ -120,6 +120,8 @@ sig
 	val content : t -> rope
 	val insert  : t -> int -> rope -> unit
 	val cut     : t -> int -> int -> unit
+	val undo    : t -> unit	(* May raise Not_found *)
+	val redo    : t -> unit (* May raise Not_found *)
 
 	val execute : t -> int list -> unit
 	(* [execute t cmd] executes the cmd on t or raise Cmd.Unknown *)

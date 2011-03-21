@@ -39,6 +39,8 @@ struct
 	let execute t = Buf.execute t.buf
 	let length t  = Buf.length t.buf
 	let append t  = Buf.append t.buf
+	let undo t    = Buf.undo t.buf
+	let redo t    = Buf.redo t.buf
 
 	let formatter t =
 		let out str i l =
@@ -86,7 +88,8 @@ struct
 			assert (t.prompt_mark.pos () < cur_len) ;
 			let cmd = Rope.sub (content t) (t.prompt_mark.pos () + Rope.length prompt) cur_len in
 			let _status = top_eval cmd in
-			append_prompt t
+			append_prompt t ;
+			Buf.reset_undo t.buf
 		)
 
 	let eval t str =

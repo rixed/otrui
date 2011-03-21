@@ -62,6 +62,7 @@ let views () = hashtbl_values named_views
 let rope_buf_of_file fname =
 	let r = Buf.create () in
 	Buf.append r (Rope.of_file fname) ;
+	Buf.reset_undo r ;
 	r
 let add_and_open_file fname =
 	let view = Rope_text_view.create ~append:true (rope_buf_of_file fname) in
@@ -122,6 +123,7 @@ let is_focused view     = match Win.root !win with Some v when v == view -> true
 let is_mapped view      = Win.exists ((==) view) !win
 let set_view view       = win := Win.set_root !win view
 let split_focus dir     =
+	(* FIXME: must not map twice the same view. Build a new empty view or take the next unmaped? *)
 	let view = unopt (Win.root (Win.to_leaf !win)) in
 	win := Win.deepen (Win.split dir !win view)
 
