@@ -129,9 +129,12 @@ let split_focus dir     =
 
 (* Key management *)
 
-type mode = Command | Insert
+type mode =
+	  Command (* exec the first matching cmd *)
+	| Dialog of (string * (int list -> unit)) (* Prompt for input *)
+	| Insert
 let mode = ref Insert
-let auto_insert = ref true	(* return in insert mode once command is executed *)
+let auto_insert = ref true	(* return in insert mode once a command is executed *)
 let command = ref []
 let last_error = ref ""
 let mutex = Mutex.create ()
@@ -148,48 +151,48 @@ let init_default_commands =
 		aux false views in
 	let c2i = Cmd.c2i in
 	(* quit *)
-	Cmd.register_cmd [ c2i 'q' ] (fun () ->
+	Cmd.register [ c2i 'q' ] (fun () ->
 		Log.p "Quit" ;
 		Term.quit () ;
 		exit 0) ;
 	(* change focus *)
-	Cmd.register_cmd [ c2i 'w' ; Term.Key.left  ] (fun () -> move_focus_to Win.Left) ;
-	Cmd.register_cmd [ c2i 'w' ; Term.Key.right ] (fun () -> move_focus_to Win.Right) ;
-	Cmd.register_cmd [ c2i 'w' ; Term.Key.up    ] (fun () -> move_focus_to Win.Up) ;
-	Cmd.register_cmd [ c2i 'w' ; Term.Key.down  ] (fun () -> move_focus_to Win.Down) ;
-	Cmd.register_cmd [ c2i 'w' ; Term.Key.npage ] deepen_focus ;
-	Cmd.register_cmd [ c2i 'w' ; Term.Key.ppage ] widen_focus ;
+	Cmd.register [ c2i 'w' ; Term.Key.left  ] (fun () -> move_focus_to Win.Left) ;
+	Cmd.register [ c2i 'w' ; Term.Key.right ] (fun () -> move_focus_to Win.Right) ;
+	Cmd.register [ c2i 'w' ; Term.Key.up    ] (fun () -> move_focus_to Win.Up) ;
+	Cmd.register [ c2i 'w' ; Term.Key.down  ] (fun () -> move_focus_to Win.Down) ;
+	Cmd.register [ c2i 'w' ; Term.Key.npage ] deepen_focus ;
+	Cmd.register [ c2i 'w' ; Term.Key.ppage ] widen_focus ;
 	(* change window size *)
-	Cmd.register_cmd [ c2i 'w' ; c2i '+' ; Term.Key.left  ] (fun () -> resize_focus Win.Left 1) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i '+' ; Term.Key.right ] (fun () -> resize_focus Win.Right 1) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i '+' ; Term.Key.up    ] (fun () -> resize_focus Win.Up 1) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i '+' ; Term.Key.down  ] (fun () -> resize_focus Win.Down 1) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i '-' ; Term.Key.left  ] (fun () -> resize_focus Win.Left ~-1) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i '-' ; Term.Key.right ] (fun () -> resize_focus Win.Right ~-1) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i '-' ; Term.Key.up    ] (fun () -> resize_focus Win.Up ~-1) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i '-' ; Term.Key.down  ] (fun () -> resize_focus Win.Down ~-1) ;
+	Cmd.register [ c2i 'w' ; c2i '+' ; Term.Key.left  ] (fun () -> resize_focus Win.Left 1) ;
+	Cmd.register [ c2i 'w' ; c2i '+' ; Term.Key.right ] (fun () -> resize_focus Win.Right 1) ;
+	Cmd.register [ c2i 'w' ; c2i '+' ; Term.Key.up    ] (fun () -> resize_focus Win.Up 1) ;
+	Cmd.register [ c2i 'w' ; c2i '+' ; Term.Key.down  ] (fun () -> resize_focus Win.Down 1) ;
+	Cmd.register [ c2i 'w' ; c2i '-' ; Term.Key.left  ] (fun () -> resize_focus Win.Left ~-1) ;
+	Cmd.register [ c2i 'w' ; c2i '-' ; Term.Key.right ] (fun () -> resize_focus Win.Right ~-1) ;
+	Cmd.register [ c2i 'w' ; c2i '-' ; Term.Key.up    ] (fun () -> resize_focus Win.Up ~-1) ;
+	Cmd.register [ c2i 'w' ; c2i '-' ; Term.Key.down  ] (fun () -> resize_focus Win.Down ~-1) ;
 	(* exchange two windows *)
-	Cmd.register_cmd [ c2i 'w' ; c2i 'x' ; Term.Key.left  ] (fun () -> exchange_focus Win.Left) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i 'x' ; Term.Key.right ] (fun () -> exchange_focus Win.Right) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i 'x' ; Term.Key.up    ] (fun () -> exchange_focus Win.Up) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i 'x' ; Term.Key.down  ] (fun () -> exchange_focus Win.Down) ;
+	Cmd.register [ c2i 'w' ; c2i 'x' ; Term.Key.left  ] (fun () -> exchange_focus Win.Left) ;
+	Cmd.register [ c2i 'w' ; c2i 'x' ; Term.Key.right ] (fun () -> exchange_focus Win.Right) ;
+	Cmd.register [ c2i 'w' ; c2i 'x' ; Term.Key.up    ] (fun () -> exchange_focus Win.Up) ;
+	Cmd.register [ c2i 'w' ; c2i 'x' ; Term.Key.down  ] (fun () -> exchange_focus Win.Down) ;
 	(* unmap the focused view *)
-	Cmd.register_cmd [ c2i 'w' ; c2i 'd' ] delete_focus ;
+	Cmd.register [ c2i 'w' ; c2i 'd' ] delete_focus ;
 	(* Change the view of the focused window to the next hidden one.
 	 * This is important that a view is not mapped several times, since a view
 	 * is supposed to be unique (for instance, text_view, store it's size, cursor position, etc.) *)
-	Cmd.register_cmd [ c2i 'b' ; c2i 'n' ] (fun () -> set_view (get_next_unmapped (views ()))) ;
+	Cmd.register [ c2i 'b' ; c2i 'n' ] (fun () -> set_view (get_next_unmapped (views ()))) ;
 	(* change the view of the focused window to the previous one *)
-	Cmd.register_cmd [ c2i 'b' ; c2i 'p' ] (fun () -> set_view (get_next_unmapped (List.rev (views ())))) ;
+	Cmd.register [ c2i 'b' ; c2i 'p' ] (fun () -> set_view (get_next_unmapped (List.rev (views ())))) ;
 	(* split the current focused window *)
-	Cmd.register_cmd [ c2i 'w' ; c2i 's' ; Term.Key.left  ] (fun () -> split_focus Win.Left) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i 's' ; Term.Key.right ] (fun () -> split_focus Win.Right) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i 's' ; Term.Key.up    ] (fun () -> split_focus Win.Up) ;
-	Cmd.register_cmd [ c2i 'w' ; c2i 's' ; Term.Key.down  ] (fun () -> split_focus Win.Down) ;
+	Cmd.register [ c2i 'w' ; c2i 's' ; Term.Key.left  ] (fun () -> split_focus Win.Left) ;
+	Cmd.register [ c2i 'w' ; c2i 's' ; Term.Key.right ] (fun () -> split_focus Win.Right) ;
+	Cmd.register [ c2i 'w' ; c2i 's' ; Term.Key.up    ] (fun () -> split_focus Win.Up) ;
+	Cmd.register [ c2i 'w' ; c2i 's' ; Term.Key.down  ] (fun () -> split_focus Win.Down) ;
 	(* undo / redo *)
-	Cmd.register_cmd (List.map c2i ['u';'n';'d';'o']) (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.Buf.undo v.Rope_text_view.buf)) ;
-	Cmd.register_cmd (List.map c2i ['r';'e';'d';'o']) (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.Buf.redo v.Rope_text_view.buf)) ;
-	Cmd.register_cmd [ c2i 'd' ; c2i 'd' ] (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.delete_line v v.Rope_text_view.cursor))
+	Cmd.register (List.map c2i ['u';'n';'d';'o']) (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.Buf.undo v.Rope_text_view.buf)) ;
+	Cmd.register (List.map c2i ['r';'e';'d';'o']) (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.Buf.redo v.Rope_text_view.buf)) ;
+	Cmd.register [ c2i 'd' ; c2i 'd' ] (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.delete_line v v.Rope_text_view.cursor))
 
 let rec key_loop () =
 	let rec do_count_times focused ?count = function
@@ -200,7 +203,7 @@ let rec key_loop () =
 			do_count_times focused ~count:((optdef count 0)*10 + c - (Cmd.c2i '0')) rest
 		| cmd ->
 			for c = 1 to (optdef count 1) do
-				let f = Cmd.function_of_cmd cmd false in f ()
+				let f = Cmd.to_function cmd in f ()
 			done in
 	let handle_key k =
 		Log.p "Got key %d" k ;
@@ -209,13 +212,17 @@ let rec key_loop () =
 
 		if k = Term.Key.escape then (
 			if focused <> None then (
-				mode := (match !mode with Command -> Insert | Insert -> Command) ;
+				(match !mode with
+					| Command  -> mode := Insert
+					| Insert   -> mode := Command
+					| Dialog _ -> Cmd.error "Aborted") ;
 				command := []
 			)
 		) else (
 			match !mode with
 			| Insert -> (unopt focused).key k
-			| Command ->
+			| Dialog (_, f) ->
+				Log.p "In dialog mode" ;
 				let do_exec =
 					if k = Term.Key.return then true else
 					if k = Term.Key.backspace then (
@@ -227,11 +234,20 @@ let rec key_loop () =
 					) in
 				if do_exec then (
 					let cmd = List.rev !command in
-					Log.p "Executing cmd %s" (Cmd.string_of_command cmd) ;
+					Log.p "Dialog entry is '%s'" (Cmd.to_string cmd) ;
 					command := [] ;
 					if !auto_insert && focused <> None then mode := Insert ;
-					do_count_times focused cmd
+					f cmd
 				)
+			| Command ->
+				command := k :: !command ;
+				if !command <> [] then try
+					let cmd = List.rev !command in
+					Log.p "Executing cmd '%s'" (Cmd.to_string cmd) ;
+					do_count_times focused cmd ;	(* may change mode *)
+					command := [] ;
+					if !auto_insert && focused <> None && !mode = Command then mode := Insert
+				with Cmd.Unknown -> ()
 		) in
 	let k = Term.Key.get () in
 	Mutex.lock mutex ;
@@ -249,10 +265,12 @@ let draw_thread () =
 		Mutex.lock mutex ;
 		let left = match !mode with
 			| Insert -> !last_error
-			| Command -> "Cmd: " ^ Cmd.string_of_command (List.rev !command)
+			| Command -> "Cmd: " ^ Cmd.to_string (List.rev !command)
+			| Dialog (p, _) -> p ^ ": " ^ Cmd.to_string (List.rev !command)
 		and right = match !mode with
 			| Insert -> "Insert"
-			| Command -> "Command" in
+			| Command -> "Command"
+			| Dialog _ -> "?" in
 		draw !win left right ;
 		Condition.wait redraw_cond mutex ;
 		Mutex.unlock mutex in

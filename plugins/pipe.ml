@@ -56,14 +56,14 @@ struct
 		let reader ch t =
 			let aux () =
 				let line = input_line ch in
-				Mutex.lock Editor.mutex ;
+				Mutex.lock mutex ;
 				Log.p "Receiving string '%s' from program" line ;
 				let line = Rope.cat (Rope.of_string line) (Rope.singleton '\n') in
 				let pos = t.prompt_mark.pos () in
 				Buf.insert t.buf pos line ;
 				Buf.reset_undo t.buf ;
-				Condition.signal Editor.redraw_cond ;
-				Mutex.unlock Editor.mutex in
+				Condition.signal redraw_cond ;
+				Mutex.unlock mutex in
 			try forever aux ()
 			with End_of_file ->
 				Log.p "program '%s' exited" program in
@@ -123,8 +123,8 @@ end
 
 (* Create a simple pipe to a shell (later, implement the "|program" command that forks program and split the current view) *)
 
-module Pipe = Make (Editor.Buf)
-module Pipe_text_view = View_text.Make (Pipe) (Editor.Term) (Editor.Cmd)
+module Pipe = Make (Buf)
+module Pipe_text_view = View_text.Make (Pipe) (Term) (Cmd)
 module Pipe_view = View_impl.Make (Pipe_text_view)
 
 let pipe_buf_of_prog prog prompt =
@@ -133,11 +133,11 @@ let add_and_open_pipe prog prompt =
 	let pipe = pipe_buf_of_prog prog prompt in
 	let view = Pipe_text_view.create ~append:true pipe in
 	let v = Pipe_view.view view ("|"^prog) in
-	Editor.add_and_open_view ("|"^prog) v
+	add_and_open_view ("|"^prog) v ;
+	v, pipe
 
 let () =
-	let shell = pipe_buf_of_prog "/bin/sh" ">% " in
-	let shell_view = Pipe_text_view.create ~append:true shell in
-	let v = Pipe_view.view shell_view "|shell" in
-	Editor.add_and_open_view "|shell" v
+	let shell = snd (add_and_open_pipe "/bin/sh" ">% ") in
+	let shell_exec cmd = Pipe.exec shell (Cmd.to_string cmd) in
+	Cmd.register [ Cmd.c2i '|' ] (fun () -> mode := Dialog ("Shell command", shell_exec))
 

@@ -71,10 +71,10 @@ sig
 	val error : string -> unit
 
 	val c2i : char -> int
-	val string_of_command : key list -> string
+	val to_string : key list -> string
 
-	val register_cmd : key list -> (unit -> unit) -> unit
-	val function_of_cmd : key list -> bool -> (unit -> unit)
+	val register : key list -> (unit -> unit) -> unit
+	val to_function : key list -> (unit -> unit)
 end
 
 

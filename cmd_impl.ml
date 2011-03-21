@@ -12,7 +12,7 @@ struct
 
 	let c2i = int_of_char
 
-	let string_of_command cmd =
+	let to_string cmd =
 		let len = List.length cmd in
 		let str = String.create len in
 		let rec aux i = function
@@ -24,7 +24,8 @@ struct
 
 	let cmd_tree = Hashtbl.create 11	(* key -> subhash * f_for_key *)
 
-	let register_cmd cmd f =
+	let register cmd f =
+		Log.p "Registering command for '%s'" (to_string cmd) ;
 		let unk () = raise Unknown in
 		let rec aux root = function
 			| [] -> failwith "Cannot add an empty command"
@@ -37,12 +38,10 @@ struct
 				aux next_root rest in
 		aux cmd_tree cmd
 
-	let function_of_cmd cmd abbrev = 
+	let to_function cmd =
 		let rec aux root = function
 			| [] ->
-				if abbrev then (
-					raise Unknown (* TODO *)
-				) else raise Unknown
+				raise Unknown (* TODO *)
 			| [k] ->
 				let _, f = try Hashtbl.find root k with Not_found -> raise Unknown in f
 			| k :: rest ->
