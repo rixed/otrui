@@ -66,7 +66,8 @@ module type CMD =
 sig
 	(* FIXME: an abstract type t to replace the int list ? *)
 	module Term : TERM
-	exception Unknown         (* When a command is destined to somebody else *)
+	exception Unknown (* When a command is undefined *)
+	exception Ambiguous (* When a command may map on several registered commands *)
 	exception Error of string (* When a command execution fails (error string is displayed) *)
 	val error : string -> unit
 

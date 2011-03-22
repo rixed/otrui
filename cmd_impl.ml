@@ -1,4 +1,5 @@
 open Otrui
+open Bricabrac
 
 module Make (Term : TERM) :
 	CMD with module Term = Term =
@@ -6,6 +7,7 @@ struct
 	module Term = Term
 
 	exception Unknown
+	exception Ambiguous
 	exception Error of string
 
 	let error str = raise (Error str)
@@ -26,26 +28,29 @@ struct
 
 	let register cmd f =
 		Log.p "Registering command for '%s'" (to_string cmd) ;
-		let unk () = raise Unknown in
 		let rec aux root = function
 			| [] -> failwith "Cannot add an empty command"
-			| [k] -> Hashtbl.add root k (Hashtbl.create 11, f)
+			| [k] -> Hashtbl.add root k (Hashtbl.create 11, Some f)
 			| k :: rest ->
 				let next_root, _ = try Hashtbl.find root k with Not_found -> (
-					let n = Hashtbl.create 11, unk in
+					let n = Hashtbl.create 11, None in
 					Hashtbl.add root k n ; n
 				) in
 				aux next_root rest in
 		aux cmd_tree cmd
 
 	let to_function cmd =
-		let rec aux root = function
+		let rec aux root last_f = function
 			| [] ->
-				raise Unknown (* TODO *)
-			| [k] ->
-				let _, f = try Hashtbl.find root k with Not_found -> raise Unknown in f
+				let l = Hashtbl.length root in
+				if l = 0 then
+					match last_f with Some f -> f | None -> raise Unknown
+				else if l = 1 then (
+					let next_root, f = List.hd (hashtbl_values root) in
+					aux next_root f []
+				) else raise Ambiguous
 			| k :: rest ->
-				let next_root, _ = try Hashtbl.find root k with Not_found -> raise Unknown in
-				aux next_root rest in
-		aux cmd_tree cmd
+				let next_root, f = try Hashtbl.find root k with Not_found -> raise Unknown in
+				aux next_root f rest in
+		aux cmd_tree None cmd
 end

@@ -52,8 +52,6 @@ let del_view name = Hashtbl.remove named_views name
 let get_view name = Hashtbl.find named_views name
 
 (* Returns a list of all kept views *)
-let hashtbl_keys h = Hashtbl.fold (fun k _ l -> k::l) h []
-let hashtbl_values h = Hashtbl.fold (fun _ v l -> v::l) h []
 let view_names () = hashtbl_keys named_views
 let views () = hashtbl_values named_views
 
@@ -192,7 +190,11 @@ let init_default_commands =
 	(* undo / redo *)
 	Cmd.register (List.map c2i ['u';'n';'d';'o']) (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.Buf.undo v.Rope_text_view.buf)) ;
 	Cmd.register (List.map c2i ['r';'e';'d';'o']) (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.Buf.redo v.Rope_text_view.buf)) ;
-	Cmd.register [ c2i 'd' ; c2i 'd' ] (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.delete_line v v.Rope_text_view.cursor))
+	(* delete line *)
+	Cmd.register [ c2i 'd' ; c2i 'd' ] (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.delete_line v v.Rope_text_view.cursor)) ;
+	(* evaluate ocaml expression *)
+	let repl_eval cmd = Repl.eval repl (Cmd.to_string cmd) in
+	Cmd.register [ Cmd.c2i '#' ] (fun () -> mode := Dialog ("Expression", repl_eval))
 
 let rec key_loop () =
 	let rec do_count_times focused ?count = function
@@ -202,9 +204,10 @@ let rec key_loop () =
 		| c :: rest when c >= Cmd.c2i '0' && c <= Cmd.c2i '9' ->
 			do_count_times focused ~count:((optdef count 0)*10 + c - (Cmd.c2i '0')) rest
 		| cmd ->
-			for c = 1 to (optdef count 1) do
-				let f = Cmd.to_function cmd in f ()
-			done in
+			(try
+				let f = Cmd.to_function cmd in
+				for c = 1 to (optdef count 1) do f () done
+			with Cmd.Unknown -> Cmd.error "no such command") in
 	let handle_key k =
 		Log.p "Got key %d" k ;
 		let focused = Win.root !win in
@@ -236,18 +239,20 @@ let rec key_loop () =
 					let cmd = List.rev !command in
 					Log.p "Dialog entry is '%s'" (Cmd.to_string cmd) ;
 					command := [] ;
-					if !auto_insert && focused <> None then mode := Insert ;
+					if !auto_insert && focused <> None then mode := Insert else mode := Command ;
 					f cmd
 				)
 			| Command ->
 				command := k :: !command ;
-				if !command <> [] then try
+				if !command <> [] then (
 					let cmd = List.rev !command in
 					Log.p "Executing cmd '%s'" (Cmd.to_string cmd) ;
-					do_count_times focused cmd ;	(* may change mode *)
-					command := [] ;
-					if !auto_insert && focused <> None && !mode = Command then mode := Insert
-				with Cmd.Unknown -> ()
+					try
+						do_count_times focused cmd ;	(* may change mode *)
+						command := [] ;
+						if !auto_insert && focused <> None && !mode = Command then mode := Insert
+					with Cmd.Ambiguous -> ()
+				)
 		) in
 	let k = Term.Key.get () in
 	Mutex.lock mutex ;
