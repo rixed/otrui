@@ -127,14 +127,15 @@ let split_focus dir     =
 
 (* Key management *)
 
+exception DialogAbort
 type mode =
 	  Command (* exec the first matching cmd *)
 	| Dialog of (string * (int list -> unit)) (* Prompt for input *)
 	| Insert
+	| DisplayError of string
 let mode = ref Insert
 let auto_insert = ref true	(* return in insert mode once a command is executed *)
 let command = ref []
-let last_error = ref ""
 let mutex = Mutex.create ()
 let redraw_cond = Condition.create ()
 
@@ -204,10 +205,8 @@ let rec key_loop () =
 		| c :: rest when c >= Cmd.c2i '0' && c <= Cmd.c2i '9' ->
 			do_count_times focused ~count:((optdef count 0)*10 + c - (Cmd.c2i '0')) rest
 		| cmd ->
-			(try
-				let f = Cmd.to_function cmd in
-				for c = 1 to (optdef count 1) do f () done
-			with Cmd.Unknown -> Cmd.error "no such command") in
+			let f = Cmd.to_function cmd in
+			for c = 1 to (optdef count 1) do f () done in
 	let handle_key k =
 		Log.p "Got key %d" k ;
 		let focused = Win.root !win in
@@ -218,11 +217,13 @@ let rec key_loop () =
 				(match !mode with
 					| Command  -> mode := Insert
 					| Insert   -> mode := Command
-					| Dialog _ -> Cmd.error "Aborted") ;
+					| Dialog _ -> raise DialogAbort
+					| DisplayError _ -> mode := if !auto_insert then Insert else Command) ;
 				command := []
 			)
 		) else (
 			match !mode with
+			| DisplayError _ -> mode := DisplayError "So what?"
 			| Insert -> (unopt focused).key k
 			| Dialog (_, f) ->
 				Log.p "In dialog mode" ;
@@ -256,9 +257,13 @@ let rec key_loop () =
 		) in
 	let k = Term.Key.get () in
 	Mutex.lock mutex ;
-	last_error :=
-		(try handle_key k ; ""
-		with Cmd.Error str -> str) ;
+	(try handle_key k
+	with exn ->
+		let buf = Buffer.create 50 in
+		let fmt = Format.formatter_of_buffer buf in
+		Toploop.print_exception_outcome fmt exn ;
+		command := [] ;
+		mode := DisplayError (Buffer.contents buf)) ;
 	Condition.signal redraw_cond ;
 	Mutex.unlock mutex ;
 	key_loop ()
@@ -266,13 +271,16 @@ let rec key_loop () =
 (* The thread that redraw the screen when signaled *)
 
 let draw_thread () =
+	let to_single_line str = String.escaped (string_translate str "\n" " ") in
 	let loop () =
 		Mutex.lock mutex ;
 		let left = match !mode with
-			| Insert -> !last_error
+			| DisplayError str -> to_single_line str
+			| Insert -> ""
 			| Command -> "Cmd: " ^ Cmd.to_string (List.rev !command)
 			| Dialog (p, _) -> p ^ ": " ^ Cmd.to_string (List.rev !command)
 		and right = match !mode with
+			| DisplayError _ -> "!"
 			| Insert -> "Insert"
 			| Command -> "Command"
 			| Dialog _ -> "?" in

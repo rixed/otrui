@@ -6,11 +6,7 @@ module Make (Term : TERM) :
 struct
 	module Term = Term
 
-	exception Unknown
 	exception Ambiguous
-	exception Error of string
-
-	let error str = raise (Error str)
 
 	let c2i = int_of_char
 
@@ -44,13 +40,13 @@ struct
 			| [] ->
 				let l = Hashtbl.length root in
 				if l = 0 then
-					match last_f with Some f -> f | None -> raise Unknown
+					match last_f with Some f -> f | None -> raise Not_found
 				else if l = 1 then (
 					let next_root, f = List.hd (hashtbl_values root) in
 					aux next_root f []
 				) else raise Ambiguous
 			| k :: rest ->
-				let next_root, f = try Hashtbl.find root k with Not_found -> raise Unknown in
+				let next_root, f = Hashtbl.find root k in
 				aux next_root f rest in
 		aux cmd_tree None cmd
 end

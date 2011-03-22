@@ -99,13 +99,10 @@ struct
 			let input = Rope.sub (content t) (t.prompt_mark.pos () + Rope.length t.prompt) cur_len in
 			let input = Rope.to_string input in
 			Log.p "Sending string '%s' to program" input ;
-			try
-				output_string t.ch_out input ;
-				flush t.ch_out ;
-				append_prompt t ;
-				Buf.reset_undo t.buf
-			with Sys_error str ->
-				Cmd.error str
+			output_string t.ch_out input ;
+			flush t.ch_out ;
+			append_prompt t ;
+			Buf.reset_undo t.buf
 		)
 
 	let exec t str =
