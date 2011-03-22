@@ -138,5 +138,11 @@ let add_and_open_pipe prog prompt =
 let () =
 	let shell = snd (add_and_open_pipe "/bin/sh" ">% ") in
 	let shell_exec cmd = Pipe.exec shell (Cmd.to_string cmd) in
-	Cmd.register [ Cmd.c2i '|' ] (fun () -> mode := Dialog ("Shell command", shell_exec))
+	Cmd.register [ Cmd.c2i '|' ] (fun _ -> mode := Dialog ("Shell command", shell_exec)) ;
+	Cmd.register (List.map Cmd.c2i ['u';'n';'d';'o']) (fun prev ->
+		may !Pipe_text_view.current (fun v -> Pipe_text_view.Buf.undo v.Pipe_text_view.buf) ;
+		prev ()) ;
+	Cmd.register (List.map Cmd.c2i ['r';'e';'d';'o']) (fun prev ->
+		may !Pipe_text_view.current (fun v -> Pipe_text_view.Buf.redo v.Pipe_text_view.buf) ;
+		prev ()) ;
 

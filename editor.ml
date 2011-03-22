@@ -150,52 +150,56 @@ let init_default_commands =
 		aux false views in
 	let c2i = Cmd.c2i in
 	(* quit *)
-	Cmd.register [ c2i 'q' ] (fun () ->
+	Cmd.register [ c2i 'q' ] (fun _ ->
 		Log.p "Quit" ;
 		Term.quit () ;
 		exit 0) ;
 	(* change focus *)
-	Cmd.register [ c2i 'w' ; Term.Key.left  ] (fun () -> move_focus_to Win.Left) ;
-	Cmd.register [ c2i 'w' ; Term.Key.right ] (fun () -> move_focus_to Win.Right) ;
-	Cmd.register [ c2i 'w' ; Term.Key.up    ] (fun () -> move_focus_to Win.Up) ;
-	Cmd.register [ c2i 'w' ; Term.Key.down  ] (fun () -> move_focus_to Win.Down) ;
-	Cmd.register [ c2i 'w' ; Term.Key.npage ] deepen_focus ;
-	Cmd.register [ c2i 'w' ; Term.Key.ppage ] widen_focus ;
+	Cmd.register [ c2i 'w' ; Term.Key.left  ] (fun _ -> move_focus_to Win.Left) ;
+	Cmd.register [ c2i 'w' ; Term.Key.right ] (fun _ -> move_focus_to Win.Right) ;
+	Cmd.register [ c2i 'w' ; Term.Key.up    ] (fun _ -> move_focus_to Win.Up) ;
+	Cmd.register [ c2i 'w' ; Term.Key.down  ] (fun _ -> move_focus_to Win.Down) ;
+	Cmd.register [ c2i 'w' ; Term.Key.npage ] (fun _ -> deepen_focus ()) ;
+	Cmd.register [ c2i 'w' ; Term.Key.ppage ] (fun _ -> widen_focus ()) ;
 	(* change window size *)
-	Cmd.register [ c2i 'w' ; c2i '+' ; Term.Key.left  ] (fun () -> resize_focus Win.Left 1) ;
-	Cmd.register [ c2i 'w' ; c2i '+' ; Term.Key.right ] (fun () -> resize_focus Win.Right 1) ;
-	Cmd.register [ c2i 'w' ; c2i '+' ; Term.Key.up    ] (fun () -> resize_focus Win.Up 1) ;
-	Cmd.register [ c2i 'w' ; c2i '+' ; Term.Key.down  ] (fun () -> resize_focus Win.Down 1) ;
-	Cmd.register [ c2i 'w' ; c2i '-' ; Term.Key.left  ] (fun () -> resize_focus Win.Left ~-1) ;
-	Cmd.register [ c2i 'w' ; c2i '-' ; Term.Key.right ] (fun () -> resize_focus Win.Right ~-1) ;
-	Cmd.register [ c2i 'w' ; c2i '-' ; Term.Key.up    ] (fun () -> resize_focus Win.Up ~-1) ;
-	Cmd.register [ c2i 'w' ; c2i '-' ; Term.Key.down  ] (fun () -> resize_focus Win.Down ~-1) ;
+	Cmd.register [ c2i 'w' ; c2i '+' ; Term.Key.left  ] (fun _ -> resize_focus Win.Left 1) ;
+	Cmd.register [ c2i 'w' ; c2i '+' ; Term.Key.right ] (fun _ -> resize_focus Win.Right 1) ;
+	Cmd.register [ c2i 'w' ; c2i '+' ; Term.Key.up    ] (fun _ -> resize_focus Win.Up 1) ;
+	Cmd.register [ c2i 'w' ; c2i '+' ; Term.Key.down  ] (fun _ -> resize_focus Win.Down 1) ;
+	Cmd.register [ c2i 'w' ; c2i '-' ; Term.Key.left  ] (fun _ -> resize_focus Win.Left ~-1) ;
+	Cmd.register [ c2i 'w' ; c2i '-' ; Term.Key.right ] (fun _ -> resize_focus Win.Right ~-1) ;
+	Cmd.register [ c2i 'w' ; c2i '-' ; Term.Key.up    ] (fun _ -> resize_focus Win.Up ~-1) ;
+	Cmd.register [ c2i 'w' ; c2i '-' ; Term.Key.down  ] (fun _ -> resize_focus Win.Down ~-1) ;
 	(* exchange two windows *)
-	Cmd.register [ c2i 'w' ; c2i 'x' ; Term.Key.left  ] (fun () -> exchange_focus Win.Left) ;
-	Cmd.register [ c2i 'w' ; c2i 'x' ; Term.Key.right ] (fun () -> exchange_focus Win.Right) ;
-	Cmd.register [ c2i 'w' ; c2i 'x' ; Term.Key.up    ] (fun () -> exchange_focus Win.Up) ;
-	Cmd.register [ c2i 'w' ; c2i 'x' ; Term.Key.down  ] (fun () -> exchange_focus Win.Down) ;
+	Cmd.register [ c2i 'w' ; c2i 'x' ; Term.Key.left  ] (fun _ -> exchange_focus Win.Left) ;
+	Cmd.register [ c2i 'w' ; c2i 'x' ; Term.Key.right ] (fun _ -> exchange_focus Win.Right) ;
+	Cmd.register [ c2i 'w' ; c2i 'x' ; Term.Key.up    ] (fun _ -> exchange_focus Win.Up) ;
+	Cmd.register [ c2i 'w' ; c2i 'x' ; Term.Key.down  ] (fun _ -> exchange_focus Win.Down) ;
 	(* unmap the focused view *)
-	Cmd.register [ c2i 'w' ; c2i 'd' ] delete_focus ;
+	Cmd.register [ c2i 'w' ; c2i 'd' ] (fun _ -> delete_focus ()) ;
 	(* Change the view of the focused window to the next hidden one.
 	 * This is important that a view is not mapped several times, since a view
 	 * is supposed to be unique (for instance, text_view, store it's size, cursor position, etc.) *)
-	Cmd.register [ c2i 'b' ; c2i 'n' ] (fun () -> set_view (get_next_unmapped (views ()))) ;
+	Cmd.register [ c2i 'b' ; c2i 'n' ] (fun _ -> set_view (get_next_unmapped (views ()))) ;
 	(* change the view of the focused window to the previous one *)
-	Cmd.register [ c2i 'b' ; c2i 'p' ] (fun () -> set_view (get_next_unmapped (List.rev (views ())))) ;
+	Cmd.register [ c2i 'b' ; c2i 'p' ] (fun _ -> set_view (get_next_unmapped (List.rev (views ())))) ;
 	(* split the current focused window *)
-	Cmd.register [ c2i 'w' ; c2i 's' ; Term.Key.left  ] (fun () -> split_focus Win.Left) ;
-	Cmd.register [ c2i 'w' ; c2i 's' ; Term.Key.right ] (fun () -> split_focus Win.Right) ;
-	Cmd.register [ c2i 'w' ; c2i 's' ; Term.Key.up    ] (fun () -> split_focus Win.Up) ;
-	Cmd.register [ c2i 'w' ; c2i 's' ; Term.Key.down  ] (fun () -> split_focus Win.Down) ;
+	Cmd.register [ c2i 'w' ; c2i 's' ; Term.Key.left  ] (fun _ -> split_focus Win.Left) ;
+	Cmd.register [ c2i 'w' ; c2i 's' ; Term.Key.right ] (fun _ -> split_focus Win.Right) ;
+	Cmd.register [ c2i 'w' ; c2i 's' ; Term.Key.up    ] (fun _ -> split_focus Win.Up) ;
+	Cmd.register [ c2i 'w' ; c2i 's' ; Term.Key.down  ] (fun _ -> split_focus Win.Down) ;
 	(* undo / redo *)
-	Cmd.register (List.map c2i ['u';'n';'d';'o']) (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.Buf.undo v.Rope_text_view.buf)) ;
-	Cmd.register (List.map c2i ['r';'e';'d';'o']) (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.Buf.redo v.Rope_text_view.buf)) ;
+	Cmd.register (List.map c2i ['u';'n';'d';'o']) (fun _ ->
+		may !Rope_text_view.current (fun v -> Rope_text_view.Buf.undo v.Rope_text_view.buf) ;
+		may !Repl_text_view.current (fun v -> Repl_text_view.Buf.undo v.Repl_text_view.buf)) ;
+	Cmd.register (List.map c2i ['r';'e';'d';'o']) (fun _ ->
+		may !Rope_text_view.current (fun v -> Rope_text_view.Buf.redo v.Rope_text_view.buf) ;
+		may !Repl_text_view.current (fun v -> Repl_text_view.Buf.redo v.Repl_text_view.buf)) ;
 	(* delete line *)
-	Cmd.register [ c2i 'd' ; c2i 'd' ] (fun () -> may !Rope_text_view.current (fun v -> Rope_text_view.delete_line v v.Rope_text_view.cursor)) ;
+	Cmd.register [ c2i 'd' ; c2i 'd' ] (fun _ -> may !Rope_text_view.current (fun v -> Rope_text_view.delete_line v v.Rope_text_view.cursor)) ;
 	(* evaluate ocaml expression *)
 	let repl_eval cmd = Repl.eval repl (Cmd.to_string cmd) in
-	Cmd.register [ Cmd.c2i '#' ] (fun () -> mode := Dialog ("Expression", repl_eval))
+	Cmd.register [ Cmd.c2i '#' ] (fun _ -> mode := Dialog ("Expression", repl_eval))
 
 let rec key_loop () =
 	let rec do_count_times focused ?count = function

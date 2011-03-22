@@ -71,8 +71,8 @@ sig
 	val c2i : char -> int
 	val to_string : key list -> string
 
-	val register : key list -> (unit -> unit) -> unit
-	val to_function : key list -> (unit -> unit)
+	val register : key list -> ((unit -> unit) -> unit) -> unit
+	val to_function : key list -> unit -> unit
 end
 
 

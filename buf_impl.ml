@@ -40,27 +40,32 @@ struct
 	let unmark t m =
 		t.marks <- List.filter ((!=) m) t.marks
 
-	let insert t pos c =
-		t.undos <- Cut (pos, pos + Rope.length c) :: t.undos ;
+	let insert_no_undo t pos c =
 		t.content <- Rope.insert t.content pos c ;
 		List.iter (fun m -> m.update_for_insert t.content pos c) t.marks
+
+	let insert t pos c =
+		t.undos <- Cut (pos, pos + Rope.length c) :: t.undos ;
+		t.redos <- [] ;
+		insert_no_undo t pos c
 	
-	let cut t start stop =
+	let cut_no_undo t start stop =
 		assert (stop >= start) ;
 		List.iter (fun m -> m.update_for_cut t.content start stop) t.marks ;
-		Log.p "Cutting '%s' from %d to %d..." (Rope.to_string t.content) start stop ;
-		t.undos <- Insert (start, Rope.sub t.content start stop) :: t.undos ;
-		t.content <- Rope.cut t.content start stop ;
-		Log.p "Got : '%s'" (Rope.to_string t.content)
+		t.content <- Rope.cut t.content start stop
 
-	let apply_modif t modif = (match modif with
+	let cut t start stop =
+		t.undos <- Insert (start, Rope.sub t.content start stop) :: t.undos ;
+		t.redos <- [] ;
+		cut_no_undo t start stop
+
+	let apply_modif t = function
 		| Insert (p, c) ->
 			Log.p "Applying Insert (%d, \"%s\")" p (Rope.to_string c) ;
-			insert t p c
+			insert_no_undo t p c
 		| Cut (a, b) ->
 			Log.p "Applying Cut (%d, %d)" a b ;
-			cut t a b) ;
-		t.undos <- List.tl t.undos
+			cut_no_undo t a b
 
 	let modif_is_continuous = function
 		| Insert (p1, r1), Insert (p2, _r2) when p2 = p1 + Rope.length r1 -> true

@@ -20,33 +20,30 @@ struct
 				aux (i+1) cmd in
 		aux 0 cmd
 
-	let cmd_tree = Hashtbl.create 11	(* key -> subhash * f_for_key *)
+	let cmds = ref []
+
+	let starts_with prefix =
+		let rec same_start c1 c2 = match c1, c2 with
+			| [], _ -> true
+			| k1 :: k1', (k2 :: k2') when k1 = k2 ->
+				same_start k1' k2'
+			| _ -> false in
+		List.filter (fun (c, _f) -> same_start prefix c) !cmds
 
 	let register cmd f =
 		Log.p "Registering command for '%s'" (to_string cmd) ;
-		let rec aux root = function
-			| [] -> failwith "Cannot add an empty command"
-			| [k] -> Hashtbl.add root k (Hashtbl.create 11, Some f)
-			| k :: rest ->
-				let next_root, _ = try Hashtbl.find root k with Not_found -> (
-					let n = Hashtbl.create 11, None in
-					Hashtbl.add root k n ; n
-				) in
-				aux next_root rest in
-		aux cmd_tree cmd
+		cmds := (cmd, f) :: !cmds
 
 	let to_function cmd =
-		let rec aux root last_f = function
-			| [] ->
-				let l = Hashtbl.length root in
-				if l = 0 then
-					match last_f with Some f -> f | None -> raise Not_found
-				else if l = 1 then (
-					let next_root, f = List.hd (hashtbl_values root) in
-					aux next_root f []
-				) else raise Ambiguous
-			| k :: rest ->
-				let next_root, f = Hashtbl.find root k in
-				aux next_root f rest in
-		aux cmd_tree None cmd
+		let rec all_same ((last_c, _last_f) as last) = function
+			| [] -> true
+			| (c, _f) :: rest when c = last_c -> all_same last rest
+			| _ -> false in
+		let cmds = starts_with cmd in
+		if cmds = [] then raise Not_found ;
+		if not (all_same (List.hd cmds) (List.tl cmds)) then raise Ambiguous ;
+		let rec call_next rest () = match rest with
+			| [] -> ()
+			| (_, f) :: rest' -> f (call_next rest') in
+		call_next cmds
 end
