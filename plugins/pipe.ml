@@ -41,6 +41,7 @@ struct
 	let length t  = Buf.length t.buf
 	let undo t    = Buf.undo t.buf
 	let redo t    = Buf.redo t.buf
+	let status t  = Buf.status t.buf
 
 	(* Caller must own Editor.mutex *)
 	let append_prompt t =
@@ -50,7 +51,8 @@ struct
 			unmark t t.prompt_mark ;
 			append t t.prompt ;
 			mark t t.prompt_mark
-		)
+		) ;
+		Buf.reset_undo t.buf
 
 	let create program prompt =
 		let reader ch t =
@@ -77,6 +79,7 @@ struct
 		t.prompt_mark.to_end_of (content t) ;
 		append t prompt ;
 		mark t t.prompt_mark ;
+		Buf.reset_undo t.buf ;
 		ignore (Thread.create (reader ch_in) t) ;
 		ignore (Thread.create (reader ch_err) t) ;
 		Gc.finalise (fun t ->
@@ -101,8 +104,7 @@ struct
 			Log.p "Sending string '%s' to program" input ;
 			output_string t.ch_out input ;
 			flush t.ch_out ;
-			append_prompt t ;
-			Buf.reset_undo t.buf
+			append_prompt t
 		)
 
 	let exec t str =

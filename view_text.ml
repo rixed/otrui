@@ -191,9 +191,10 @@ struct
 
 	let content_status t =
 		let len = Buf.length t.buf in
-		Printf.sprintf "l:%d,%d c:%d/%d (curs:%d,%d,%d)"
+		Printf.sprintf "l:%d,%d c:%d/%d (curs:%d,%d,%d) %s"
 			t.cursor.MarkLine.lineno t.cursor.MarkLine.lineoff (MarkLine.pos t.cursor) len
 			t.cursor.MarkLine.linepos t.cursor.MarkLine.lineoff t.cursor.MarkLine.lineno
+			(Buf.status t.buf)
 
 	let draw t x0 y0 width height focused =
 		Log.p "display from %d,%d, width=%d, height=%d" x0 y0 width height ;

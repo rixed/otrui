@@ -1,19 +1,11 @@
 open Bricabrac
 open Otrui
 
-module type S =
-sig
-	include BUF
-	val create       : unit -> t
-	val eval         : t -> string -> unit
-	val grab_topdirs : t -> unit
-end
-
 (* We need a simple mark for our own use *)
 module MarkOffset = Mark_offset.Make
 module Mark = Mark_impl.Make (MarkOffset)
 
-module Make (Buf : Buf_impl.S) : S =
+module Make (Buf : Buf_impl.S) =
 struct
 	module Buf = Buf
 
@@ -40,6 +32,7 @@ struct
 	let append t  = Buf.append t.buf
 	let undo t    = Buf.undo t.buf
 	let redo t    = Buf.redo t.buf
+	let status t  = Buf.status t.buf
 
 	let formatter t =
 		let out str i l =

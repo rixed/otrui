@@ -7,7 +7,7 @@ OTRUI_SOURCES = \
 	term_curses.ml term_impl.ml \
 	cmd_impl.ml \
 	mark_impl.ml mark_offset.ml mark_lines.ml \
-	buf_impl.ml buf_repl.ml \
+	buf_impl.ml buf_repl.ml buf_file.ml \
 	view_impl.ml view_text.ml \
 	win_impl.ml \
 	editor.ml main.ml

@@ -123,6 +123,9 @@ sig
 
 	val length  : t -> int
 	val append  : t -> rope -> unit
+
+	val status  : t -> string
+
 end
 
 
