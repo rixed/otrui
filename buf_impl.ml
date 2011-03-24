@@ -60,12 +60,8 @@ struct
 		cut_no_undo t start stop
 
 	let apply_modif t = function
-		| Insert (p, c) ->
-			Log.p "Applying Insert (%d, \"%s\")" p (Rope.to_string c) ;
-			insert_no_undo t p c
-		| Cut (a, b) ->
-			Log.p "Applying Cut (%d, %d)" a b ;
-			cut_no_undo t a b
+		| Insert (p, c) -> insert_no_undo t p c
+		| Cut (a, b) ->    cut_no_undo t a b
 
 	let modif_is_continuous = function
 		| Insert (p1, r1), Insert (p2, _r2) when p2 = p1 + Rope.length r1 -> true
@@ -97,7 +93,6 @@ struct
 		aux modif
 
 	let append t c = insert t (Rope.length (content t)) c
-	let append_string t s = insert t (Rope.length (content t)) (Rope.of_string s)
 	let length t = Rope.length (content t)
 
 	let status t = match t.undos, t.redos with

@@ -14,7 +14,7 @@ module type S =
 sig
 	include BUF
 	module Buf : BUF
-	val create : string -> char Rope.t -> t
+	val create : string -> rope -> t
 	(* [create prog prompt] creates a pipe to program prog, using given prompt *)
 	val exec   : t -> string -> unit
 end
@@ -32,7 +32,7 @@ struct
 		{ buf         : Buf.t ;
 		  prompt_mark : mark ;
 		  ch_out      : out_channel ;
-		  prompt      : char Rope.t }
+		  prompt      : rope }
 
 	let content t = Buf.content t.buf
 	let mark t    = Buf.mark t.buf
@@ -60,7 +60,7 @@ struct
 				let line = input_line ch in
 				Mutex.lock mutex ;
 				Log.p "Receiving string '%s' from program" line ;
-				let line = Rope.cat (Rope.of_string line) (Rope.singleton '\n') in
+				let line = Rope.cat (Rope.of_string line) (Rope.singleton ('\n', Rope.none)) in
 				let pos = t.prompt_mark.pos () in
 				Buf.insert t.buf pos line ;
 				Buf.reset_undo t.buf ;
@@ -96,7 +96,7 @@ struct
 		if
 			appending &&
 			cur_len > 0 &&
-			Rope.nth (content t) (cur_len - 1) = '\n'
+			fst (Rope.nth (content t) (cur_len - 1)) = '\n'
 		then (
 			assert (t.prompt_mark.pos () < cur_len) ;
 			let input = Rope.sub (content t) (t.prompt_mark.pos () + Rope.length t.prompt) cur_len in
@@ -109,7 +109,7 @@ struct
 
 	let exec t str =
 		append_prompt t ;
-		let cmd = Rope.cat (Rope.of_string str) (Rope.singleton '\n') in
+		let cmd = Rope.cat (Rope.of_string str) (Rope.singleton ('\n', Rope.none)) in
 		insert t (length t) cmd
 	
 	(* Disallow to delete the last prompt *)
@@ -127,16 +127,19 @@ module Pipe_text_view = View_text.Make (Pipe) (Term) (Cmd)
 module Pipe_view = View_impl.Make (Pipe_text_view)
 
 let pipe_buf_of_prog prog prompt =
-	Pipe.create prog (Rope.of_string prompt)
+	Pipe.create prog prompt
 let add_and_open_pipe prog prompt =
 	let pipe = pipe_buf_of_prog prog prompt in
 	let view = Pipe_text_view.create ~append:true pipe in
+	Hashtbl.add view.Pipe_text_view.colors (Rope.anot_of_string "prompt") (Term.get_color (800, 500, 1000) (0, 0, 0)) ;
 	let v = Pipe_view.view view ("|"^prog) in
 	add_and_open_view ("|"^prog) v ;
 	v, pipe
 
 let () =
-	let shell = snd (add_and_open_pipe "/bin/sh" ">% ") in
+	let shell =
+		let a = Rope.anot_of_string "prompt" in
+		snd (add_and_open_pipe "/bin/sh" (Rope.of_list [ '>',a; '%',a; ' ',a ])) in
 	let shell_exec cmd = Pipe.exec shell (Cmd.to_string cmd) in
 	Cmd.register [ Cmd.c2i '|' ] (fun _ -> mode := Dialog ("Shell command", shell_exec)) ;
 	Cmd.register (List.map Cmd.c2i ['u';'n';'d';'o']) (fun prev ->

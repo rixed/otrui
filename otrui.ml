@@ -75,9 +75,31 @@ sig
 	val to_function : key list -> unit -> unit
 end
 
+module Rope =
+struct
+	include Rope_impl.Make
 
-module Rope = Rope_impl.Make
-type rope = char Rope.t
+	type anot = int
+	let str2anot = Hashtbl.create 17
+	let anot2str = Hashtbl.create 17
+	let anot_of_string =
+		let seq = ref 0 in (fun str ->
+			try Hashtbl.find str2anot str with Not_found ->
+				let a = !seq in
+				Hashtbl.add str2anot str a ;
+				Hashtbl.add anot2str a str ;
+				incr seq ; a)
+	let string_of_anot a = Hashtbl.find anot2str a
+	let none = anot_of_string "none"
+
+	let make_homogen anot t = of_func (length t) (fun i -> nth t i, anot)
+	let make_unknown t = make_homogen none t
+	let of_string s = of_func (String.length s) (fun i -> s.[i], none)
+	let chars_only t = of_func (length t) (fun i -> fst (nth t i))
+	let to_string t = to_string (chars_only t)
+end
+
+type rope = (char * Rope.anot) Rope.t
 
 module type MARK_BASE =
 sig

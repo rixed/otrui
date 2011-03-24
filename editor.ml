@@ -23,7 +23,10 @@ let repl =
 
 (* Then a text editor for editing it *)
 
-let repl_view = Repl_view.view (Repl_text_view.create ~append:true repl) "REPL"
+let repl_view =
+	let r = Repl_text_view.create ~append:true repl in
+	Hashtbl.add r.Repl_text_view.colors (Rope.anot_of_string "prompt") (Term.get_color (100, 100, 1000) (0, 0, 0)) ;
+	Repl_view.view r "REPL"
 
 (* An empty window to show it *)
 
@@ -59,7 +62,7 @@ let views () = hashtbl_values named_views
 
 let rope_buf_of_file fname =
 	let r = Buf.create () in
-	Buf.append r (Rope.of_file fname) ;
+	Buf.append r (Rope.make_unknown (Rope.of_file fname)) ;
 	Buf.reset_undo r ;
 	r
 let add_and_open_file fname =

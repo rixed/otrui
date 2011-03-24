@@ -23,13 +23,14 @@ struct
 		Log.p "Advance cursor %d times" (Rope.length r') ;
 		let pos, off, no =
 			Rope.fold_left (fun (p, o, n) c ->
-				if c = '\n' then p+o+1, 0, n+1 else p, o+1, n)
+				if fst c = '\n' then p+o+1, 0, n+1 else p, o+1, n)
 			(m.linepos, m.lineoff, m.lineno) r' in
 		m.linepos <- pos ;
 		m.lineoff <- off ;
 		m.lineno <- no
 
 	let update_for_insert m _ pos r' =
+		let r' = Rope.chars_only r' in
 		let nbl = Rope.count r' '\n'
 		and len = Rope.length r' in
 		if pos < m.linepos then (
@@ -51,8 +52,8 @@ struct
 	let update_for_cut m r start stop =
 		Log.p "Cutting %d from %d to %d" (Rope.length r) start stop ;
 		let r' = Rope.sub r start stop in
+		let r' = Rope.chars_only r' in
 		let nbl = Rope.count r' '\n' in
-		Log.p "Cutting '%s' (nbl=%d)" (Rope.to_string r') nbl ;
 		if m.linepos > stop then (
 			m.linepos <- m.linepos - (stop-start) ;
 			assert (m.lineno >= nbl) ;
@@ -65,6 +66,7 @@ struct
 			m.lineno  <- m.lineno - nbl	;
 			(* we probably deleted the \n just before linepos. Lets find new beginning of line *)
 			let r' = Rope.sub r 0 start in
+			let r' = Rope.chars_only r' in
 			let last_nl = try Rope.rindex r' '\n' with Not_found -> -1 in
 			m.lineoff <- m.lineoff + m.linepos - (last_nl+1) ;
 			m.linepos <- last_nl + 1

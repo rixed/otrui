@@ -13,7 +13,7 @@ struct
 
 	let create fname =
 		let buf = Buf.create () in
-		Buf.append buf (Rope.of_file fname) ;
+		Buf.append buf (Rope.make_unknown (Rope.of_file fname)) ;
 		Buf.reset_undo buf ;
 		{ buf = buf ;
 		  fname = fname ;

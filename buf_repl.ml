@@ -13,7 +13,9 @@ struct
 		{ buf         : Buf.t ;
 		  prompt_mark : mark (* mark the position of the last prompt *) }
 
-	let prompt = Rope.of_string "# "
+	let prompt =
+		let a = Rope.anot_of_string "prompt" in
+		Rope.of_list [ '#',a ; ' ',a ]
 	
 	let create () =
 		let buf = Buf.create () in
@@ -36,7 +38,7 @@ struct
 
 	let formatter t =
 		let out str i l =
-			append t (Rope.of_func l (fun j -> str.[i+j])) in
+			append t (Rope.of_func l (fun j -> str.[i+j], Rope.none)) in
 		Format.make_formatter out nop
 
 	let append_prompt t =
