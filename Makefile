@@ -1,5 +1,3 @@
-OCAMLPATH = ..
-
 all: eval.byte otrui.byte system.cmo plugins/pipe.cmo
 
 OTRUI_SOURCES = \
@@ -15,15 +13,15 @@ OTRUI_SOURCES = \
 OTHER_SOURCES = system.ml plugins/pipe.ml
 ML_SOURCES = $(OTRUI_SOURCES) $(OTHER_SOURCES)
 
-REQUIRES = unix bricabrac pfds curses
+REQUIRES = unix bricabrac pfds curses compiler-libs.toplevel
 
 include make.common
 
 otrui.byte: $(OTRUI_SOURCES:.ml=.cmo)
-	$(OCAMLC)   -o $@ -package "$(REQUIRES)" -linkpkg -linkall $(OCAMLFLAGS) toplevellib.cma $^
+	$(OCAMLC)   -o $@ -package "$(REQUIRES)" -linkpkg -linkall $(OCAMLFLAGS) $^
 
 eval.byte: eval.cmo
-	$(OCAMLC)   -o $@ -package "$(REQUIRES)" -linkpkg -linkall $(OCAMLFLAGS) toplevellib.cma $^
+	$(OCAMLC)   -o $@ -package "$(REQUIRES)" -linkpkg -linkall $(OCAMLFLAGS) $^
 
 otrui.cma: $(OTRUI_SOURCES:.ml=.cmo)
 	$(OCAMLC)   -a -o $@ -package "$(REQUIRES)" -custom -linkpkg $(OCAMLFLAGS) $^
